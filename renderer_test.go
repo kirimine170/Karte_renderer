@@ -119,3 +119,44 @@ func assertContains(t *testing.T, s, sub string) {
 		t.Fatalf("expected %q in:\n%s", sub, s)
 	}
 }
+
+func TestCSVImportSelectColumns(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "data.csv"), "Name,Score,Note\nAda,10,ok\n")
+	html, _, err := RenderString(root, `@import(type="csv" path="data.csv" select="Name,Note")`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, html, "<th>Name</th>")
+	assertContains(t, html, "<th>Note</th>")
+	if strings.Contains(html, "<th>Score</th>") || strings.Contains(html, "<td>10</td>") {
+		t.Fatalf("unselected CSV column rendered:\n%s", html)
+	}
+}
+
+func TestMarpClassDirective(t *testing.T) {
+	html, _, err := RenderString(t.TempDir(), "---\nmarp: true\n---\n<!-- _class: lead invert -->\n# Title")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, html, `class="marp-slide lead invert"`)
+	if strings.Contains(html, "_class:") {
+		t.Fatalf("slide directive should not be rendered:\n%s", html)
+	}
+}
+
+func TestKatexNotProcessedInsideCode(t *testing.T) {
+	html, _, err := RenderString(t.TempDir(), "`$x$`\n\n$x$")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, html, "<code>$x$</code>")
+	assertContains(t, html, `<span class="katex" data-katex="x">x</span>`)
+}
+
+func TestExportPDFReportsMissingBinary(t *testing.T) {
+	err := ExportPDFWithBinary(filepath.Join(t.TempDir(), "missing-wkhtmltopdf"), "in.html", "out.pdf")
+	if err == nil || !strings.Contains(err.Error(), "no such file") {
+		t.Fatalf("expected missing binary error, got %v", err)
+	}
+}

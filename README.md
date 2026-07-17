@@ -1,27 +1,167 @@
 # Karte Renderer
 
-`karte_renderer` is a standalone Go package that collects the rendering-oriented parts of [kirimine170/Karte](https://github.com/kirimine170/Karte): Markdown rendering, Marp-style slide rendering, `@import` expansion, front matter extraction, KaTeX placeholder rendering, layout wrapping, and PDF export through `wkhtmltopdf`.
+`KarteRenderer` is the rendering-focused Go module extracted from
+[`kirimine170/Karte`](https://github.com/kirimine170/Karte). It provides a
+library API and the `karte-renderer` CLI for normal Markdown documents and
+Marp slide decks.
+
+## Supported conversions
+
+| Input | HTML | PDF | PPTX |
+| --- | --- | --- | --- |
+| Markdown | built-in | Chromium, with `wkhtmltopdf` fallback | - |
+| Marp Markdown (`marp: true`) | official Marp CLI | official Marp CLI | official Marp CLI |
+
+The split is intentional:
+
+- Normal Markdown uses the CommonMark-compliant
+  [goldmark](https://github.com/yuin/goldmark) renderer with GFM tables,
+  strikethrough, task lists, autolinks, footnotes, and definition lists.
+- Marp output delegates to the
+  [official Marp CLI](https://github.com/marp-team/marp-cli), so themes,
+  directives, speaker notes, PDF, and PowerPoint output behave like Marp
+  rather than a partial reimplementation.
+- Normal document PDF output prefers a Chromium-family browser for modern CSS
+  support. Existing `wkhtmltopdf` integrations remain supported.
+
+Marp's normal PPTX output prioritizes visual fidelity and stores rendered
+slides as images. `--pptx-editable` is experimental, needs LibreOffice as well
+as a browser, does not preserve every complex style, and does not support
+presenter notes. See the
+[Marp CLI documentation](https://github.com/marp-team/marp-cli#convert-to-powerpoint-document-pptx-).
 
 ## Features
 
-- Render Markdown strings or files to HTML.
-- Parse YAML-like front matter (`title`, `marp`, `theme`, `layout`, `owners`, `viewers`, and arbitrary keys in `Data`).
-- Expand `@import(type="csv" path="...")` and `@import(type="md" path="...")` directives inside a safe project root.
-- Render Marp decks when `marp: true` is present, splitting slides on `---` lines and preserving `_class` directives as section classes.
-- Convert `$...$` and `$$$...$$$` math into KaTeX-compatible HTML placeholders while leaving code spans/blocks untouched.
-- Wrap output with `themes/default/preview.html`, then `themes/default/layout.html`, then a built-in fallback layout.
-- Export rendered HTML to PDF via `wkhtmltopdf` with local file access enabled.
+- CommonMark and GitHub Flavored Markdown rendering.
+- Real YAML front matter, including lists, booleans, numbers, and nested data.
+- Karte-compatible fields: `title`, `marp`, `theme`, `layout`, `owners`, and
+  `viewers`; all metadata is also available through `FrontMatter.Data`.
+- Root-scoped `@import(type="md" ...)` and `@import(type="csv" ...)`, including
+  nested import expansion, cycle detection, selected CSV columns, and symlink
+  escape protection.
+- `$...$` and `$$$...$$$` KaTeX-compatible placeholders outside code spans and
+  blocks.
+- Project layouts in `themes/default/preview.html` or
+  `themes/default/layout.html`, with a printable standalone fallback layout.
+- Local asset resolution when HTML is written to a different output directory.
+- Context-aware Go APIs, atomic HTML writes, actionable external-tool errors,
+  and a dependency doctor.
 
-## Usage
+## Requirements
 
-```go
-html, fm, err := renderer.RenderMarkdown(projectRoot, "content/page.md")
+- Go 1.22 or newer.
+- Node.js 18 or newer plus `npm ci` for Marp output.
+- Google Chrome, Chromium, Microsoft Edge, or Brave for normal document PDF.
+- A Marp-supported browser for Marp PDF/PPTX. Chrome works for both pipelines.
+- LibreOffice only when using experimental editable PPTX output.
+
+Install and build:
+
+```sh
+npm ci
+go build -o bin/karte-renderer ./cmd/karte-renderer
+bin/karte-renderer doctor
 ```
 
-```go
-html, fm, err := renderer.RenderString(projectRoot, "---\ntitle: Deck\nmarp: true\n---\n# Slide")
+`package-lock.json` pins the Marp toolchain. HTML conversion for normal
+Markdown does not require Node.js or a browser.
+
+## CLI
+
+```sh
+# Normal Markdown
+bin/karte-renderer document.md output/document.html
+bin/karte-renderer document.md output/document.pdf
+
+# Marp, selected by `marp: true` front matter
+bin/karte-renderer slides.md output/slides.html
+bin/karte-renderer --allow-local-files slides.md output/slides.pdf
+bin/karte-renderer --allow-local-files slides.md output/slides.pptx
 ```
 
-```go
-err := renderer.ExportPDF("/path/to/page.html", "/path/to/page.pdf")
+Common options:
+
+```text
+--root PATH             trusted project root for themes and @import
+--hardwrap              turn Markdown soft breaks into <br>
+--theme NAME_OR_CSS     override the Marp theme
+--theme-set CSS         add Marp theme CSS; repeatable
+--allow-local-files     allow trusted local assets in Marp browser exports
+--html                  allow trusted raw HTML in Marp (needed for CSV imports)
+--browser-path PATH     explicitly choose Marp's browser
+--pptx-editable         request Marp's experimental editable PPTX
+--pdf-engine ENGINE     auto, chromium, or wkhtmltopdf for document PDF
+--pdf-binary PATH       explicitly choose the document PDF executable
 ```
+
+The environment variables `MARP_BINARY` and `KARTE_PDF_BINARY` are also
+supported. The CLI looks for a project-local `node_modules/.bin/marp` before
+reporting a missing Marp installation.
+
+## Go API
+
+Render an embedded Markdown document:
+
+```go
+html, frontMatter, err := renderer.RenderMarkdown(projectRoot, "content/page.md")
+```
+
+Convert a file based on its metadata and output extension:
+
+```go
+frontMatter, err := renderer.ConvertFile(ctx, "slides.md", "build/slides.pptx", renderer.ConvertOptions{
+    Root: projectRoot,
+    Marp: renderer.MarpOptions{
+        AllowLocalFiles: true,
+    },
+})
+```
+
+The lower-level `ExportMarp` and `ExportHTMLPDF` functions are available when
+the caller already owns the Markdown/HTML pipeline. The legacy
+`ExportPDFWithBinary` function remains a direct `wkhtmltopdf` compatibility
+API.
+
+## Project layouts and imports
+
+`RenderMarkdown` searches in this order:
+
+1. `themes/default/preview.html`
+2. `themes/default/layout.html`
+3. the built-in standalone layout
+
+Layouts may contain `{{TITLE}}` and `{{CONTENT}}` placeholders.
+
+```md
+@import(type="md" path="partials/intro.md")
+@import(type="csv" path="data/results.csv" select="Name,Score")
+```
+
+Paths are resolved relative to the current Markdown file and must stay below
+the configured project root. Marp CSV imports produce HTML tables, so pass
+`--html` only for trusted input.
+
+## Security notes
+
+- `RenderMarkdown` preserves raw HTML for compatibility with Karte templates;
+  treat rendered Markdown as trusted or sanitize the resulting HTML before
+  serving untrusted user content.
+- Marp blocks local file access by default. `--allow-local-files` deliberately
+  follows Marp's security model and should only be used for trusted decks.
+- `@import` rejects lexical path traversal, symlink escapes, cycles, and import
+  nesting deeper than 32 levels.
+
+## Development
+
+```sh
+go test ./...
+go vet ./...
+
+# End-to-end samples
+go run ./cmd/karte-renderer examples/document.md output/document.pdf
+go run ./cmd/karte-renderer examples/slides.md output/slides.pptx
+```
+
+The test suite covers GFM, structured YAML, math/code boundaries, layouts,
+imports, path safety, Marp invocation, PDF-engine invocation, and CLI package
+buildability.

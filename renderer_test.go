@@ -160,3 +160,89 @@ func TestExportPDFReportsMissingBinary(t *testing.T) {
 		t.Fatalf("expected missing binary error, got %v", err)
 	}
 }
+
+func TestGFMTablesListsLinksAndFootnotes(t *testing.T) {
+	html, _, err := RenderString(t.TempDir(), `| Name | Score |
+| --- | ---: |
+| Ada | 10 |
+
+- [x] done
+- [ ] next
+
+[Karte](https://example.com)
+
+Footnote[^1]
+
+[^1]: detail`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"<table>", "<th>Name</th>", `type="checkbox"`, `href="https://example.com"`, `class="footnotes"`} {
+		assertContains(t, html, want)
+	}
+}
+
+func TestYAMLFrontMatterSupportsListsAndNestedData(t *testing.T) {
+	_, fm, err := RenderString(t.TempDir(), `---
+title: "Structured: metadata"
+owners:
+  - alice
+  - bob
+viewers: [carol]
+settings:
+  draft: false
+  retries: 3
+---
+# Body`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fm.Title != "Structured: metadata" || len(fm.Owners) != 2 || fm.Owners[1] != "bob" || len(fm.Viewers) != 1 {
+		t.Fatalf("unexpected front matter: %+v", fm)
+	}
+	settings, ok := fm.Data["settings"].(map[string]interface{})
+	if !ok || settings["draft"] != false || settings["retries"] != 3 {
+		t.Fatalf("nested front matter was not preserved: %#v", fm.Data)
+	}
+}
+
+func TestYAMLFrontMatterAcceptsLegacyCommaSeparatedPeople(t *testing.T) {
+	_, fm, err := RenderString(t.TempDir(), "---\nowners: alice, bob\n---\nBody")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fm.Owners) != 2 || fm.Owners[0] != "alice" || fm.Owners[1] != "bob" {
+		t.Fatalf("unexpected owners: %#v", fm.Owners)
+	}
+}
+
+func TestHardWrap(t *testing.T) {
+	html, _, err := RenderStringWithOptions(t.TempDir(), "first\nsecond", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, html, "first<br>\nsecond")
+}
+
+func TestCyclicMarkdownImport(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "a.md"), `@import(type="md" path="b.md")`)
+	writeFile(t, filepath.Join(root, "b.md"), `@import(type="md" path="a.md")`)
+	_, _, err := RenderMarkdown(root, "a.md")
+	if err == nil || !strings.Contains(err.Error(), "cyclic @import") {
+		t.Fatalf("expected cyclic import error, got %v", err)
+	}
+}
+
+func TestImportRejectsSymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "outside.md")
+	writeFile(t, outside, "secret")
+	if err := os.Symlink(outside, filepath.Join(root, "linked.md")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	_, _, err := RenderString(root, `@import(type="md" path="linked.md")`)
+	if err == nil || !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("expected symlink escape error, got %v", err)
+	}
+}

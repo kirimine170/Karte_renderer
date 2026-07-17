@@ -1,0 +1,15 @@
+{
+  "name": "karte-renderer-tools",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Pinned external renderer used by KarteRenderer",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@marp-team/marp-cli": "4.4.1"
+  },
+  "scripts": {
+    "marp": "marp"
+  }
+}

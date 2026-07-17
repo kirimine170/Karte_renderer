@@ -12,6 +12,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
+	gmhtml "github.com/yuin/goldmark/renderer/html"
+	"gopkg.in/yaml.v3"
 )
 
 // FrontMatter contains YAML metadata found at the top of a Markdown document.
@@ -51,13 +56,28 @@ func NewRenderer(fs FileSystem) *Renderer {
 }
 
 const fallbackLayout = `<!doctype html>
-<html>
-<head><meta charset="utf-8"><title>{{TITLE}}</title></head>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<style>
+:root { color-scheme: light dark; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.6; }
+body { box-sizing: border-box; max-width: 960px; margin: 0 auto; padding: 2rem; }
+img, video, svg { max-width: 100%; height: auto; }
+pre { overflow-x: auto; padding: 1rem; border-radius: .35rem; background: color-mix(in srgb, CanvasText 8%, Canvas); }
+code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: .4rem .6rem; border: 1px solid color-mix(in srgb, CanvasText 25%, Canvas); text-align: left; }
+blockquote { margin-left: 0; padding-left: 1rem; border-left: .25rem solid color-mix(in srgb, CanvasText 25%, Canvas); }
+@media print { :root { color-scheme: light; } body { max-width: none; padding: 0; } }
+</style>
+</head>
 <body>{{CONTENT}}</body>
 </html>`
 
 var defaultRenderer = NewRenderer(OSFileSystem{})
-var fmRe = regexp.MustCompile(`(?s)^---\r?\n(.*?)\r?\n---\r?\n`)
+var fmRe = regexp.MustCompile(`(?s)\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\z)`)
 var importRe = regexp.MustCompile(`(?m)^@import\(([^)]*)\)\s*$`)
 
 // RenderMarkdown renders a Markdown file below root, returning HTML and front matter.
@@ -81,9 +101,19 @@ func RenderStringWithOptions(root, markdown string, hardwrap bool) (string, Fron
 }
 
 func (r *Renderer) RenderMarkdownWithOptions(root, path string, hardwrap bool) (string, FrontMatter, error) {
+	root, err := r.normalizeRoot(root)
+	if err != nil {
+		return "", FrontMatter{}, err
+	}
 	full, err := safeJoin(root, path)
 	if err != nil {
 		return "", FrontMatter{}, err
+	}
+	if r.usesOSFileSystem() {
+		full, err = resolveWithinRoot(root, full)
+		if err != nil {
+			return "", FrontMatter{}, err
+		}
 	}
 	b, err := r.fs.ReadFile(full)
 	if err != nil {
@@ -93,6 +123,11 @@ func (r *Renderer) RenderMarkdownWithOptions(root, path string, hardwrap bool) (
 }
 
 func (r *Renderer) RenderStringWithOptions(root, markdown string, hardwrap bool) (string, FrontMatter, error) {
+	var err error
+	root, err = r.normalizeRoot(root)
+	if err != nil {
+		return "", FrontMatter{}, err
+	}
 	return r.render(root, root, markdown, hardwrap)
 }
 
@@ -136,101 +171,92 @@ func parseFrontMatter(s string) (string, FrontMatter, error) {
 }
 
 func parseYAML(yml string, fm *FrontMatter) error {
-	if fm.Data == nil {
-		fm.Data = map[string]interface{}{}
+	type knownFrontMatter struct {
+		Title  string `yaml:"title"`
+		Marp   bool   `yaml:"marp"`
+		Theme  string `yaml:"theme"`
+		Layout string `yaml:"layout"`
 	}
-	for _, line := range strings.Split(yml, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		k, v, ok := strings.Cut(line, ":")
-		if !ok {
-			return fmt.Errorf("invalid frontmatter line %q", line)
-		}
-		key := strings.TrimSpace(k)
-		val := strings.Trim(strings.TrimSpace(v), "\"'")
-		var any interface{} = val
-		if val == "true" {
-			any = true
-		} else if val == "false" {
-			any = false
-		}
-		fm.Data[key] = any
-		switch strings.ToLower(key) {
-		case "title":
-			fm.Title = val
-		case "marp":
-			fm.Marp = val == "true"
-		case "theme":
-			fm.Theme = val
-		case "layout":
-			fm.Layout = val
-		case "owners":
-			fm.Owners = parseCSVList(val)
-		case "viewers":
-			fm.Viewers = parseCSVList(val)
-		}
+	var known knownFrontMatter
+	if err := yaml.Unmarshal([]byte(yml), &known); err != nil {
+		return fmt.Errorf("invalid YAML front matter: %w", err)
 	}
+	data := map[string]interface{}{}
+	if err := yaml.Unmarshal([]byte(yml), &data); err != nil {
+		return fmt.Errorf("invalid YAML front matter: %w", err)
+	}
+	fm.Title = known.Title
+	fm.Marp = known.Marp
+	fm.Theme = known.Theme
+	fm.Layout = known.Layout
+	owners, err := frontMatterStringList(data["owners"])
+	if err != nil {
+		return fmt.Errorf("invalid YAML front matter owners: %w", err)
+	}
+	viewers, err := frontMatterStringList(data["viewers"])
+	if err != nil {
+		return fmt.Errorf("invalid YAML front matter viewers: %w", err)
+	}
+	fm.Owners = owners
+	fm.Viewers = viewers
+	fm.Data = data
 	return nil
 }
 
+func frontMatterStringList(value interface{}) ([]string, error) {
+	switch value := value.(type) {
+	case nil:
+		return nil, nil
+	case string:
+		return parseCSVList(value), nil
+	case []interface{}:
+		out := make([]string, 0, len(value))
+		for _, item := range value {
+			text, ok := item.(string)
+			if !ok {
+				return nil, fmt.Errorf("expected string list, got %T", item)
+			}
+			out = append(out, text)
+		}
+		return out, nil
+	default:
+		return nil, fmt.Errorf("expected string or string list, got %T", value)
+	}
+}
+
 func markdownHTML(s string, hardwrap bool) (string, error) {
-	_ = hardwrap
-	return processKaTeX(simpleMarkdown(s)), nil
-}
-
-func simpleMarkdown(s string) string {
-	lines := strings.Split(s, "\n")
-	var sb strings.Builder
-	var para []string
-	flush := func() {
-		if len(para) > 0 {
-			sb.WriteString("<p>" + inlineMarkdown(strings.Join(para, "\n")) + "</p>\n")
-			para = nil
-		}
+	rendererOptions := []goldmark.Option{
+		goldmark.WithExtensions(
+			extension.GFM,
+			extension.Footnote,
+			extension.DefinitionList,
+		),
+		goldmark.WithRendererOptions(gmhtml.WithUnsafe()),
 	}
-	for _, line := range lines {
-		trim := strings.TrimSpace(line)
-		if trim == "" {
-			flush()
-			continue
-		}
-		if strings.HasPrefix(trim, "<") {
-			flush()
-			sb.WriteString(trim + "\n")
-			continue
-		}
-		if n := headingLevel(trim); n > 0 {
-			flush()
-			text := strings.TrimSpace(trim[n:])
-			fmt.Fprintf(&sb, "<h%d>%s</h%d>\n", n, inlineMarkdown(text), n)
-			continue
-		}
-		para = append(para, trim)
+	if hardwrap {
+		rendererOptions = append(rendererOptions, goldmark.WithRendererOptions(gmhtml.WithHardWraps()))
 	}
-	flush()
-	return sb.String()
-}
-
-func headingLevel(s string) int {
-	for i := 1; i <= 6 && i < len(s); i++ {
-		if strings.HasPrefix(s, strings.Repeat("#", i)+" ") {
-			return i
-		}
+	md := goldmark.New(rendererOptions...)
+	var out bytes.Buffer
+	if err := md.Convert([]byte(s), &out); err != nil {
+		return "", fmt.Errorf("render markdown: %w", err)
 	}
-	return 0
-}
-func inlineMarkdown(s string) string {
-	s = html.EscapeString(s)
-	s = regexp.MustCompile(`\*\*([^*]+)\*\*`).ReplaceAllString(s, "<strong>$1</strong>")
-	s = regexp.MustCompile("`([^`]+)`").ReplaceAllString(s, "<code>$1</code>")
-	return s
+	return processKaTeX(out.String()), nil
 }
 
 func (r *Renderer) expandImports(root, baseDir, s string, hardwrap bool) (string, error) {
+	return r.expandImportsRecursive(root, baseDir, s, hardwrap, map[string]bool{}, 0)
+}
+
+func (r *Renderer) expandImportsRecursive(root, baseDir, s string, hardwrap bool, stack map[string]bool, depth int) (string, error) {
+	if depth > 32 {
+		return "", fmt.Errorf("maximum @import depth exceeded")
+	}
 	var firstErr error
 	out := importRe.ReplaceAllStringFunc(s, func(m string) string {
+		if firstErr != nil {
+			return ""
+		}
 		attrs := parseAttrs(importRe.FindStringSubmatch(m)[1])
 		typ, p := attrs["type"], attrs["path"]
 		if p == "" {
@@ -249,6 +275,18 @@ func (r *Renderer) expandImports(root, baseDir, s string, hardwrap bool) (string
 			firstErr = fmt.Errorf("import path escapes root: %s", p)
 			return ""
 		}
+		if r.usesOSFileSystem() {
+			if resolved, err := resolveWithinRoot(root, full); err != nil {
+				firstErr = err
+				return ""
+			} else {
+				full = resolved
+			}
+		}
+		if stack[full] {
+			firstErr = fmt.Errorf("cyclic @import detected at %s", p)
+			return ""
+		}
 		b, err := r.fs.ReadFile(full)
 		if err != nil {
 			firstErr = err
@@ -263,7 +301,9 @@ func (r *Renderer) expandImports(root, baseDir, s string, hardwrap bool) (string
 			}
 			return h
 		case "md", "markdown":
-			nested, err := r.expandImports(root, filepath.Dir(full), string(b), hardwrap)
+			stack[full] = true
+			nested, err := r.expandImportsRecursive(root, filepath.Dir(full), string(b), hardwrap, stack, depth+1)
+			delete(stack, full)
 			if err != nil {
 				firstErr = err
 				return ""
@@ -450,8 +490,11 @@ func processKaTeX(s string) string {
 	return s
 }
 
-// ExportPDF writes HTML to a PDF using wkhtmltopdf-compatible binaries.
-func ExportPDF(htmlFile, outputPDF string) error { return ExportPDFWithBinary("", htmlFile, outputPDF) }
+// ExportPDF writes HTML to a PDF using Chromium when available, with
+// wkhtmltopdf as a compatibility fallback.
+func ExportPDF(htmlFile, outputPDF string) error {
+	return ExportHTMLPDF(nil, htmlFile, outputPDF, PDFOptions{AllowLocalFiles: true})
+}
 
 // ExportPDFWithBinary writes HTML to a PDF with an explicit binary or PATH/default lookup.
 func ExportPDFWithBinary(binary, htmlFile, outputPDF string) error {
@@ -505,7 +548,61 @@ func safeJoin(root, p string) (string, error) {
 	return full, nil
 }
 func isWithin(root, full string) bool {
-	root = filepath.Clean(root)
-	full = filepath.Clean(full)
-	return full == root || strings.HasPrefix(full, root+string(os.PathSeparator))
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return false
+	}
+	full, err = filepath.Abs(full)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(root, full)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
+}
+
+func resolveWithinRoot(root, full string) (string, error) {
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve root: %w", err)
+	}
+	resolvedFull, err := filepath.EvalSymlinks(full)
+	if err != nil {
+		return "", err
+	}
+	if !isWithin(resolvedRoot, resolvedFull) {
+		return "", fmt.Errorf("path escapes root through symlink: %s", full)
+	}
+	return resolvedFull, nil
+}
+
+func canonicalRoot(root string) (string, error) {
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve root: %w", err)
+	}
+	root, err = filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve root: %w", err)
+	}
+	return root, nil
+}
+
+func (r *Renderer) usesOSFileSystem() bool {
+	switch r.fs.(type) {
+	case OSFileSystem, *OSFileSystem:
+		return true
+	default:
+		return false
+	}
+}
+
+func (r *Renderer) normalizeRoot(root string) (string, error) {
+	if r.usesOSFileSystem() {
+		return canonicalRoot(root)
+	}
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve root: %w", err)
+	}
+	return root, nil
 }

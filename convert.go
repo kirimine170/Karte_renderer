@@ -17,8 +17,13 @@ type ConvertOptions struct {
 	// to the input file's directory.
 	Root     string
 	HardWrap bool
-	Marp     MarpOptions
-	PDF      PDFOptions
+	// CSS replaces the built-in document stylesheet. Relative paths are
+	// resolved from the current working directory.
+	CSS string
+	// NoCSS disables stylesheet injection for normal Markdown documents.
+	NoCSS bool
+	Marp  MarpOptions
+	PDF   PDFOptions
 }
 
 // MarpOptions configures conversions delegated to the official Marp CLI.
@@ -115,7 +120,11 @@ func ConvertFile(ctx context.Context, input, output string, opts ConvertOptions)
 	if err != nil {
 		return fm, fmt.Errorf("locate input below root: %w", err)
 	}
-	rendered, renderedFM, err := RenderMarkdownWithOptions(root, rel, opts.HardWrap)
+	css, err := loadDocumentCSS(opts)
+	if err != nil {
+		return fm, err
+	}
+	rendered, renderedFM, err := defaultRenderer.renderMarkdownWithCSS(root, rel, opts.HardWrap, css)
 	if err != nil {
 		return fm, err
 	}
@@ -146,6 +155,23 @@ func ConvertFile(ctx context.Context, input, output string, opts ConvertOptions)
 		return renderedFM, err
 	}
 	return renderedFM, nil
+}
+
+func loadDocumentCSS(opts ConvertOptions) (string, error) {
+	if opts.NoCSS && opts.CSS != "" {
+		return "", fmt.Errorf("--css and --no-css cannot be used together")
+	}
+	if opts.NoCSS {
+		return "", nil
+	}
+	if opts.CSS == "" {
+		return defaultDocumentCSS, nil
+	}
+	b, err := os.ReadFile(opts.CSS)
+	if err != nil {
+		return "", fmt.Errorf("read document CSS: %w", err)
+	}
+	return string(b), nil
 }
 
 func prepareMarpInput(root, input, source string, hardwrap bool) (string, func(), error) {

@@ -38,6 +38,8 @@ func run(args []string) error {
 	var themeSets stringList
 	fs.StringVar(&opts.Root, "root", "", "trusted project root (default: input directory)")
 	fs.BoolVar(&opts.HardWrap, "hardwrap", false, "render Markdown soft line breaks as <br>")
+	fs.StringVar(&opts.CSS, "css", "", "replace the default document CSS with the specified file")
+	fs.BoolVar(&opts.NoCSS, "no-css", false, "disable CSS for normal Markdown documents")
 	fs.StringVar(&opts.Marp.Binary, "marp-binary", "", "path to the Marp CLI")
 	fs.StringVar(&opts.Marp.Theme, "theme", "", "Marp theme name or CSS path")
 	fs.Var(&themeSets, "theme-set", "additional Marp theme CSS (repeatable)")

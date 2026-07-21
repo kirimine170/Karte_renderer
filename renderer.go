@@ -61,17 +61,7 @@ const fallbackLayout = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{TITLE}}</title>
-<style>
-:root { color-scheme: light dark; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.6; }
-body { box-sizing: border-box; max-width: 960px; margin: 0 auto; padding: 2rem; }
-img, video, svg { max-width: 100%; height: auto; }
-pre { overflow-x: auto; padding: 1rem; border-radius: .35rem; background: color-mix(in srgb, CanvasText 8%, Canvas); }
-code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
-table { width: 100%; border-collapse: collapse; }
-th, td { padding: .4rem .6rem; border: 1px solid color-mix(in srgb, CanvasText 25%, Canvas); text-align: left; }
-blockquote { margin-left: 0; padding-left: 1rem; border-left: .25rem solid color-mix(in srgb, CanvasText 25%, Canvas); }
-@media print { :root { color-scheme: light; } body { max-width: none; padding: 0; } }
-</style>
+{{CSS}}
 </head>
 <body>{{CONTENT}}</body>
 </html>`
@@ -101,6 +91,10 @@ func RenderStringWithOptions(root, markdown string, hardwrap bool) (string, Fron
 }
 
 func (r *Renderer) RenderMarkdownWithOptions(root, path string, hardwrap bool) (string, FrontMatter, error) {
+	return r.renderMarkdownWithCSS(root, path, hardwrap, defaultDocumentCSS)
+}
+
+func (r *Renderer) renderMarkdownWithCSS(root, path string, hardwrap bool, css string) (string, FrontMatter, error) {
 	root, err := r.normalizeRoot(root)
 	if err != nil {
 		return "", FrontMatter{}, err
@@ -119,7 +113,7 @@ func (r *Renderer) RenderMarkdownWithOptions(root, path string, hardwrap bool) (
 	if err != nil {
 		return "", FrontMatter{}, err
 	}
-	return r.render(root, filepath.Dir(full), string(b), hardwrap)
+	return r.render(root, filepath.Dir(full), string(b), hardwrap, css)
 }
 
 func (r *Renderer) RenderStringWithOptions(root, markdown string, hardwrap bool) (string, FrontMatter, error) {
@@ -128,10 +122,10 @@ func (r *Renderer) RenderStringWithOptions(root, markdown string, hardwrap bool)
 	if err != nil {
 		return "", FrontMatter{}, err
 	}
-	return r.render(root, root, markdown, hardwrap)
+	return r.render(root, root, markdown, hardwrap, defaultDocumentCSS)
 }
 
-func (r *Renderer) render(root, baseDir, markdown string, hardwrap bool) (string, FrontMatter, error) {
+func (r *Renderer) render(root, baseDir, markdown string, hardwrap bool, css string) (string, FrontMatter, error) {
 	body, fm, err := parseFrontMatter(markdown)
 	if err != nil {
 		return "", fm, err
@@ -154,6 +148,7 @@ func (r *Renderer) render(root, baseDir, markdown string, hardwrap bool) (string
 		return "", fm, err
 	}
 	out := strings.ReplaceAll(layout, "{{TITLE}}", html.EscapeString(fm.Title))
+	out = strings.ReplaceAll(out, "{{CSS}}", documentStyle(css))
 	out = strings.ReplaceAll(out, "{{CONTENT}}", content)
 	return out, fm, nil
 }

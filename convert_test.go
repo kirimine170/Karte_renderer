@@ -32,6 +32,64 @@ func TestConvertDocumentToHTML(t *testing.T) {
 	assertContains(t, html, "<h1>Hello</h1>")
 	assertContains(t, html, `<base href="file://`)
 	assertContains(t, html, "/docs/")
+	assertContains(t, html, `id="karte-renderer-css"`)
+	assertContains(t, html, "#c2b4ff")
+}
+
+func TestConvertDocumentWithNoCSS(t *testing.T) {
+	root := t.TempDir()
+	input := filepath.Join(root, "page.md")
+	output := filepath.Join(root, "page.html")
+	writeFile(t, input, "# Plain")
+
+	if _, err := ConvertFile(context.Background(), input, output, ConvertOptions{Root: root, NoCSS: true}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := string(b)
+	if strings.Contains(html, `id="karte-renderer-css"`) || strings.Contains(html, "#c2b4ff") {
+		t.Fatalf("CSS should be omitted:\n%s", html)
+	}
+}
+
+func TestConvertDocumentWithCustomCSS(t *testing.T) {
+	root := t.TempDir()
+	input := filepath.Join(root, "page.md")
+	output := filepath.Join(root, "page.html")
+	css := filepath.Join(root, "custom.css")
+	writeFile(t, input, "# Custom")
+	writeFile(t, css, "body { color: tomato; }")
+
+	if _, err := ConvertFile(context.Background(), input, output, ConvertOptions{Root: root, CSS: css}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := string(b)
+	assertContains(t, html, `id="karte-renderer-css"`)
+	assertContains(t, html, "color: tomato")
+	if strings.Contains(html, "#c2b4ff") {
+		t.Fatalf("default CSS should be replaced:\n%s", html)
+	}
+}
+
+func TestConvertRejectsCSSAndNoCSS(t *testing.T) {
+	root := t.TempDir()
+	input := filepath.Join(root, "page.md")
+	writeFile(t, input, "# Conflict")
+	_, err := ConvertFile(context.Background(), input, filepath.Join(root, "page.html"), ConvertOptions{
+		Root:  root,
+		CSS:   filepath.Join(root, "custom.css"),
+		NoCSS: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "cannot be used together") {
+		t.Fatalf("expected conflicting CSS option error, got %v", err)
+	}
 }
 
 func TestConvertMarpUsesOfficialCLI(t *testing.T) {

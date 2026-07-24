@@ -169,7 +169,27 @@ tbody tr:nth-child(even) td {
   background: rgba(204, 234, 243, 0.25);
 }
 
-/* A4 / finite printout でも行色を維持 */
+/* 印刷 ------------------------------------------------------ */
+
+@page {
+  size: A4 portrait;
+  margin: 12mm 14mm;
+  background: linear-gradient(180deg, #f9f9ff 0%, #f5f4ff 45%, #f7fbff 100%);
+}
+
+@media print {
+  html {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body {
+    margin: 0;
+    background: transparent;
+  }
+}
+
+/* finite printout でも行色を維持 */
 html[data-printout]:not([data-printout="infinite"]) {
   -webkit-print-color-adjust: exact !important;
   print-color-adjust: exact !important;

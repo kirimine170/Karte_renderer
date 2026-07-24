@@ -3,9 +3,26 @@ package renderer
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
+
+func TestDefaultCSSDefinesA4PrintPageWithoutBodyMargin(t *testing.T) {
+	rendered, _, err := RenderString(t.TempDir(), "# Print")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pageRule := regexp.MustCompile(`(?s)@page\s*\{[^}]*size:\s*A4 portrait;[^}]*margin:\s*12mm 14mm;[^}]*background:\s*linear-gradient\(`)
+	if !pageRule.MatchString(rendered) {
+		t.Fatal("default stylesheet does not define the expected A4 page box")
+	}
+	printBody := regexp.MustCompile(`(?s)@media print\s*\{.*?body\s*\{[^}]*margin:\s*0;[^}]*background:\s*transparent;`)
+	if !printBody.MatchString(rendered) {
+		t.Fatal("default print stylesheet does not remove the screen body margin")
+	}
+}
 
 func TestPlainMarkdownRendering(t *testing.T) {
 	html, _, err := RenderString(t.TempDir(), "# Hello\n\nThis is **bold**.")

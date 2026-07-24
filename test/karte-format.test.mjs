@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import katex from "katex";
 import { parse as parseYAML } from "yaml";
 
 const root = path.resolve("testdata/karte-format/complex");
@@ -36,6 +37,25 @@ test("complex karte-format fixture has valid linked resources", async () => {
     } else {
       assert.fail(`unsupported resource type: ${resource.type}`);
     }
+  }
+});
+
+test("complex TeX resources render with KaTeX", async () => {
+  const formulas = [
+    ["math/energy.tex", false],
+    ["math/weighted-sum.tex", true],
+  ];
+
+  for (const [relative, displayMode] of formulas) {
+    const expression = (await readFile(path.join(root, relative), "utf8")).trim();
+    const rendered = katex.renderToString(expression, {
+      displayMode,
+      output: "htmlAndMathml",
+      throwOnError: true,
+    });
+    assert.match(rendered, /class="katex-mathml"/);
+    assert.match(rendered, /class="katex-html"/);
+    assert.doesNotMatch(rendered, /class="katex-error"/);
   }
 });
 

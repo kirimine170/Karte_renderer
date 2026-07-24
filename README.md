@@ -39,8 +39,8 @@ presenter notes. See the
 - Root-scoped Markdown, CSV, and TeX `@import` directives, including nested
   import expansion, cycle detection, selected CSV columns, inline or display
   TeX placeholders, and symlink escape protection.
-- `$...$` and `$$$...$$$` KaTeX-compatible placeholders outside code spans and
-  blocks.
+- Offline KaTeX rendering for `$...$`, `$$$...$$$`, and imported TeX, with the
+  JavaScript, CSS, and WOFF2 fonts embedded only when a document contains math.
 - Project layouts in `themes/default/preview.html` or
   `themes/default/layout.html`, with a printable standalone fallback layout.
 - A built-in Purple Color Palette stylesheet for normal Markdown documents,
@@ -67,6 +67,9 @@ bin/karte-renderer doctor
 
 `package-lock.json` pins the Marp toolchain. HTML conversion for normal
 Markdown does not require Node.js or a browser.
+
+Math-enabled HTML remains standalone: the renderer embeds KaTeX and its fonts
+directly into the generated document, so previews and PDFs work offline.
 
 ## CLI
 
@@ -134,12 +137,15 @@ API.
 2. `themes/default/layout.html`
 3. the built-in standalone layout
 
-Layouts may contain `{{TITLE}}`, `{{CSS}}`, and `{{CONTENT}}` placeholders.
+Layouts may contain `{{TITLE}}`, `{{CSS}}`, `{{KATEX}}`, and `{{CONTENT}}`
+placeholders.
 `{{CSS}}` is replaced by a complete `<style>` element. It contains the bundled
 `assets/default.css` by default, the file supplied with `--css PATH` when set,
 or nothing when `--no-css` is set. Relative `--css` paths are resolved from the
 current working directory. These options affect normal Markdown documents;
 Marp continues to use its own theme options.
+`{{KATEX}}` is populated only when math is present. Layouts without that
+placeholder receive the runtime automatically before `</head>`.
 
 ```md
 @import(type="md" path="partials/intro.md")
@@ -180,4 +186,5 @@ go run ./cmd/karte-renderer examples/slides.md output/slides.pptx
 
 The test suite covers GFM, structured YAML, math/code boundaries, layouts,
 imports, path safety, Marp invocation, PDF-engine invocation, and CLI package
-buildability. The Node test validates the linked karte-format fixture resources.
+buildability. The Node tests validate the linked karte-format fixture resources
+and render every fixture formula with the pinned KaTeX release.

@@ -14,6 +14,7 @@
     "test": "node --test test/*.test.mjs"
   },
   "devDependencies": {
+    "katex": "0.18.1",
     "yaml": "2.9.0"
   }
 }

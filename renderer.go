@@ -62,6 +62,7 @@ const fallbackLayout = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{TITLE}}</title>
 {{CSS}}
+{{KATEX}}
 </head>
 <body>{{CONTENT}}</body>
 </html>`
@@ -147,9 +148,15 @@ func (r *Renderer) render(root, baseDir, markdown string, hardwrap bool, css str
 	if err != nil {
 		return "", fm, err
 	}
+	runtime := katexRuntimeFor(content)
+	hasKaTeXPlaceholder := strings.Contains(layout, "{{KATEX}}")
 	out := strings.ReplaceAll(layout, "{{TITLE}}", html.EscapeString(fm.Title))
 	out = strings.ReplaceAll(out, "{{CSS}}", documentStyle(css))
+	out = strings.ReplaceAll(out, "{{KATEX}}", runtime)
 	out = strings.ReplaceAll(out, "{{CONTENT}}", content)
+	if runtime != "" && !hasKaTeXPlaceholder {
+		out = injectKaTeXRuntime(out, runtime)
+	}
 	return out, fm, nil
 }
 

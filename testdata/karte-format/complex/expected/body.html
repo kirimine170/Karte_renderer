@@ -1,0 +1,45 @@
+<h1>Complex Karte Format Fixture</h1>
+<h2>Overview</h2>
+<p>This section combines nested Markdown, selected CSV columns, and inline TeX.</p>
+<table>
+<thead>
+<tr><th>resource</th><th>count</th></tr>
+</thead>
+<tbody>
+<tr><td>markdown</td><td>4</td></tr>
+<tr><td>csv</td><td>2</td></tr>
+<tr><td>tex</td><td>2</td></tr>
+<tr><td>webp</td><td>1</td></tr>
+</tbody>
+</table>
+<p>Energy formula:
+<span class="katex" data-katex="E = mc^2">E = mc^2</span></p>
+<h2>Results</h2>
+<p>The selected columns must keep their requested order and escape HTML-like data.</p>
+<table>
+<thead>
+<tr><th>status</th><th>metric</th><th>value</th></tr>
+</thead>
+<tbody>
+<tr><td>stable</td><td>accuracy</td><td>0.98</td></tr>
+<tr><td>&lt;fast&gt;, repeatable</td><td>latency_ms</td><td>42</td></tr>
+</tbody>
+</table>
+<h3>Findings</h3>
+<p>The weighted sum is imported as a display formula.</p>
+<div class="katex-display" data-katex="\sum_{i=1}^{n} w_i x_i">\sum_{i=1}^{n} w_i x_i</div>
+<h2>Diagram</h2>
+<p><img src="../assets/diagram.webp" alt="Three linked resources"></p>
+<h2>Conclusion</h2>
+<p>The same CSV resource can be projected again from a different nesting depth.</p>
+<table>
+<thead>
+<tr><th>resource</th></tr>
+</thead>
+<tbody>
+<tr><td>markdown</td></tr>
+<tr><td>csv</td></tr>
+<tr><td>tex</td></tr>
+<tr><td>webp</td></tr>
+</tbody>
+</table>

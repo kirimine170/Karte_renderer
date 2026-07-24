@@ -10,6 +10,10 @@
     "@marp-team/marp-cli": "4.4.1"
   },
   "scripts": {
-    "marp": "marp"
+    "marp": "marp",
+    "test": "node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "yaml": "2.9.0"
   }
 }

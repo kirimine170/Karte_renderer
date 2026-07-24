@@ -36,9 +36,9 @@ presenter notes. See the
 - Real YAML front matter, including lists, booleans, numbers, and nested data.
 - Karte-compatible fields: `title`, `marp`, `theme`, `layout`, `owners`, and
   `viewers`; all metadata is also available through `FrontMatter.Data`.
-- Root-scoped `@import(type="md" ...)` and `@import(type="csv" ...)`, including
-  nested import expansion, cycle detection, selected CSV columns, and symlink
-  escape protection.
+- Root-scoped Markdown, CSV, and TeX `@import` directives, including nested
+  import expansion, cycle detection, selected CSV columns, inline or display
+  TeX placeholders, and symlink escape protection.
 - `$...$` and `$$$...$$$` KaTeX-compatible placeholders outside code spans and
   blocks.
 - Project layouts in `themes/default/preview.html` or
@@ -135,11 +135,17 @@ Layouts may contain `{{TITLE}}` and `{{CONTENT}}` placeholders.
 ```md
 @import(type="md" path="partials/intro.md")
 @import(type="csv" path="data/results.csv" select="Name,Score")
+@import(type="tex" path="math/model.tex" display="block")
 ```
 
 Paths are resolved relative to the current Markdown file and must stay below
-the configured project root. Marp CSV imports produce HTML tables, so pass
+the configured project root. TeX imports default to display mode and also
+accept `display="inline"`. Marp CSV and TeX imports produce HTML, so pass
 `--html` only for trusted input.
+
+A minimal multi-file example is available in `examples/karte-format-basic`.
+The more involved fixture in `testdata/karte-format/complex` combines nested
+Markdown imports, CSV projections, TeX modes, and a WebP asset.
 
 ## Security notes
 
@@ -156,6 +162,7 @@ the configured project root. Marp CSV imports produce HTML tables, so pass
 ```sh
 go test ./...
 go vet ./...
+npm test
 
 # End-to-end samples
 go run ./cmd/karte-renderer examples/document.md output/document.pdf
@@ -164,4 +171,4 @@ go run ./cmd/karte-renderer examples/slides.md output/slides.pptx
 
 The test suite covers GFM, structured YAML, math/code boundaries, layouts,
 imports, path safety, Marp invocation, PDF-engine invocation, and CLI package
-buildability.
+buildability. The Node test validates the linked karte-format fixture resources.

@@ -43,6 +43,8 @@ presenter notes. See the
   blocks.
 - Project layouts in `themes/default/preview.html` or
   `themes/default/layout.html`, with a printable standalone fallback layout.
+- A built-in Purple Color Palette stylesheet for normal Markdown documents,
+  with explicit custom CSS and no-CSS modes.
 - Local asset resolution when HTML is written to a different output directory.
 - Context-aware Go APIs, atomic HTML writes, actionable external-tool errors,
   and a dependency doctor.
@@ -84,6 +86,8 @@ Common options:
 ```text
 --root PATH             trusted project root for themes and @import
 --hardwrap              turn Markdown soft breaks into <br>
+--css PATH              replace the built-in document CSS with this file
+--no-css                disable CSS for normal Markdown documents
 --theme NAME_OR_CSS     override the Marp theme
 --theme-set CSS         add Marp theme CSS; repeatable
 --allow-local-files     allow trusted local assets in Marp browser exports
@@ -130,7 +134,12 @@ API.
 2. `themes/default/layout.html`
 3. the built-in standalone layout
 
-Layouts may contain `{{TITLE}}` and `{{CONTENT}}` placeholders.
+Layouts may contain `{{TITLE}}`, `{{CSS}}`, and `{{CONTENT}}` placeholders.
+`{{CSS}}` is replaced by a complete `<style>` element. It contains the bundled
+`assets/default.css` by default, the file supplied with `--css PATH` when set,
+or nothing when `--no-css` is set. Relative `--css` paths are resolved from the
+current working directory. These options affect normal Markdown documents;
+Marp continues to use its own theme options.
 
 ```md
 @import(type="md" path="partials/intro.md")

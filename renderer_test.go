@@ -14,6 +14,24 @@ func TestPlainMarkdownRendering(t *testing.T) {
 	}
 	assertContains(t, html, "<h1>Hello</h1>")
 	assertContains(t, html, "<strong>bold</strong>")
+	assertContains(t, html, `id="karte-renderer-css"`)
+	assertContains(t, html, "#c2b4ff")
+}
+
+func TestLayoutCSSPlaceholderUsesDefaultStylesheet(t *testing.T) {
+	root := t.TempDir()
+	theme := filepath.Join(root, "themes", "default")
+	if err := os.MkdirAll(theme, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(theme, "preview.html"), "<head>{{CSS}}</head><main>{{CONTENT}}</main>")
+
+	html, _, err := RenderString(root, "# Styled")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, html, `id="karte-renderer-css"`)
+	assertContains(t, html, "#c2b4ff")
 }
 
 func TestFrontMatterExtraction(t *testing.T) {

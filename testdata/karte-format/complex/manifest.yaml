@@ -1,0 +1,25 @@
+karte: 0.1
+id: complex-report
+kind: document
+entry: content/document.md
+
+resources:
+  summary:
+    type: csv
+    path: data/summary.csv
+  results:
+    type: csv
+    path: data/results.csv
+  energy:
+    type: tex
+    path: math/energy.tex
+  weighted_sum:
+    type: tex
+    path: math/weighted-sum.tex
+  diagram:
+    type: webp
+    path: assets/diagram.webp
+
+render:
+  profile: article
+  theme: default

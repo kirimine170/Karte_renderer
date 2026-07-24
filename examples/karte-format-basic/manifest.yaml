@@ -1,0 +1,13 @@
+karte: 0.1
+entry: document.md
+
+resources:
+  table:
+    type: csv
+    path: data.csv
+  formula:
+    type: tex
+    path: formula.tex
+  image:
+    type: webp
+    path: image.webp

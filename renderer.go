@@ -68,7 +68,7 @@ const fallbackLayout = `<!doctype html>
 
 var defaultRenderer = NewRenderer(OSFileSystem{})
 var fmRe = regexp.MustCompile(`(?s)\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\z)`)
-var importRe = regexp.MustCompile(`(?m)^@import\(([^)]*)\)\s*$`)
+var importRe = regexp.MustCompile(`(?m)^@import\(([^)]*)\)[ \t]*$`)
 
 // RenderMarkdown renders a Markdown file below root, returning HTML and front matter.
 func RenderMarkdown(root string, path string) (string, FrontMatter, error) {
@@ -295,6 +295,13 @@ func (r *Renderer) expandImportsRecursive(root, baseDir, s string, hardwrap bool
 				return ""
 			}
 			return h
+		case "tex":
+			h, err := texToHTML(b, attrs)
+			if err != nil {
+				firstErr = err
+				return ""
+			}
+			return h
 		case "md", "markdown":
 			stack[full] = true
 			nested, err := r.expandImportsRecursive(root, filepath.Dir(full), string(b), hardwrap, stack, depth+1)
@@ -366,6 +373,22 @@ func csvToHTML(b []byte, attrs map[string]string) (string, error) {
 	}
 	sb.WriteString("</table>")
 	return sb.String(), nil
+}
+
+func texToHTML(b []byte, attrs map[string]string) (string, error) {
+	expr := strings.TrimSpace(string(b))
+	if expr == "" {
+		return "", fmt.Errorf("empty TeX import")
+	}
+	escaped := html.EscapeString(expr)
+	switch strings.ToLower(strings.TrimSpace(attrs["display"])) {
+	case "", "block", "true":
+		return `<div class="katex-display" data-katex="` + escaped + `">` + escaped + `</div>`, nil
+	case "inline", "false":
+		return `<span class="katex" data-katex="` + escaped + `">` + escaped + `</span>`, nil
+	default:
+		return "", fmt.Errorf("invalid TeX display mode %q (use block or inline)", attrs["display"])
+	}
 }
 
 func parseCSVList(s string) []string {

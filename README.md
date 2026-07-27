@@ -45,6 +45,9 @@ presenter notes. See the
   `themes/default/layout.html`, with a printable standalone fallback layout.
 - A built-in Purple Color Palette stylesheet for normal Markdown documents,
   with explicit custom CSS and no-CSS modes.
+- A4 portrait output for normal-document PDFs with explicit paged-media
+  margins and background. Custom stylesheets may replace this with their own
+  `@page` rule.
 - Local asset resolution when HTML is written to a different output directory.
 - Context-aware Go APIs, atomic HTML writes, actionable external-tool errors,
   and a dependency doctor.

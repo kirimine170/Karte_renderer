@@ -1,7 +1,6 @@
 package renderer
 
 import (
-	"bytes"
 	"fmt"
 	"net/url"
 	"os"
@@ -175,7 +174,6 @@ func (c *metadataCollector) collectReferences(baseDir, markdown string) {
 		target   string
 	}
 	var references []referenceOccurrence
-	autolinkCursors := map[string]int{}
 	_ = ast.Walk(document, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -184,26 +182,16 @@ func (c *metadataCollector) collectReferences(baseDir, markdown string) {
 		switch node := node.(type) {
 		case *ast.Image:
 			target := string(node.Destination)
-			fallback := []byte(target)
-			if target == "" {
-				fallback = []byte("![]()")
-			}
-			references = append(references, referenceOccurrence{offset: nodeSourceOffset(node, source, fallback), sequence: sequence, asset: true, target: target})
+			references = append(references, referenceOccurrence{offset: referenceSourceOffset(node, len(source), sequence), sequence: sequence, asset: true, target: target})
 		case *ast.Link:
 			target := string(node.Destination)
-			references = append(references, referenceOccurrence{offset: nodeSourceOffset(node, source, []byte(target)), sequence: sequence, target: target})
+			references = append(references, referenceOccurrence{offset: referenceSourceOffset(node, len(source), sequence), sequence: sequence, target: target})
 		case *ast.AutoLink:
 			target := string(node.URL(source))
 			if node.AutoLinkType == ast.AutoLinkEmail && !strings.HasPrefix(strings.ToLower(target), "mailto:") {
 				target = "mailto:" + target
 			}
-			label := node.Label(source)
-			offset := nextSourceOccurrence(source, label, autolinkCursors[string(label)])
-			if offset >= 0 {
-				autolinkCursors[string(label)] = offset + len(label)
-			} else {
-				offset = len(source) + sequence
-			}
+			offset := referenceSourceOffset(node, len(source), sequence)
 			references = append(references, referenceOccurrence{offset: offset, sequence: sequence, target: target})
 		}
 		return ast.WalkContinue, nil
@@ -223,36 +211,11 @@ func (c *metadataCollector) collectReferences(baseDir, markdown string) {
 	}
 }
 
-func nodeSourceOffset(node ast.Node, source, fallback []byte) int {
-	offset := len(source)
-	_ = ast.Walk(node, func(child ast.Node, entering bool) (ast.WalkStatus, error) {
-		if entering {
-			if textNode, ok := child.(*ast.Text); ok && textNode.Segment.Start < offset {
-				offset = textNode.Segment.Start
-			}
-		}
-		return ast.WalkContinue, nil
-	})
-	if offset < len(source) {
+func referenceSourceOffset(node ast.Node, sourceLength, sequence int) int {
+	if offset := node.Pos(); offset >= 0 {
 		return offset
 	}
-	if len(fallback) > 0 {
-		if fallbackOffset := bytes.Index(source, fallback); fallbackOffset >= 0 {
-			return fallbackOffset
-		}
-	}
-	return len(source)
-}
-
-func nextSourceOccurrence(source, value []byte, start int) int {
-	if len(value) == 0 || start >= len(source) {
-		return -1
-	}
-	offset := bytes.Index(source[start:], value)
-	if offset < 0 {
-		return -1
-	}
-	return start + offset
+	return sourceLength + sequence
 }
 
 func (c *metadataCollector) addLink(baseDir, target string) {
@@ -324,12 +287,8 @@ func (c *metadataCollector) addAsset(baseDir, reference string) {
 }
 
 func (c *metadataCollector) resolveLocalReference(baseDir, reference string) (string, bool) {
-	u, err := url.Parse(reference)
-	if err != nil {
-		return "", false
-	}
-	p, err := url.PathUnescape(u.Path)
-	if err != nil || p == "" {
+	p := localReferencePath(reference)
+	if p == "" {
 		return "", false
 	}
 	var full string
@@ -351,13 +310,34 @@ func (c *metadataCollector) relativePath(path string) string {
 }
 
 func isExternalReference(reference string) bool {
-	u, err := url.Parse(reference)
-	return err == nil && (u.Scheme != "" || u.Host != "")
+	if strings.HasPrefix(reference, "//") {
+		return true
+	}
+	colon := strings.IndexByte(reference, ':')
+	if colon <= 0 {
+		return false
+	}
+	for i, char := range reference[:colon] {
+		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (i > 0 && ((char >= '0' && char <= '9') || char == '+' || char == '-' || char == '.')) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func referenceHasNoPath(reference string) bool {
-	u, err := url.Parse(reference)
-	return err == nil && u.Path == ""
+	return localReferencePath(reference) == ""
+}
+
+func localReferencePath(reference string) string {
+	if end := strings.IndexAny(reference, "?#"); end >= 0 {
+		reference = reference[:end]
+	}
+	if decoded, err := url.PathUnescape(reference); err == nil {
+		return decoded
+	}
+	return reference
 }
 
 // missingPathEscapesRoot resolves the nearest existing ancestor so a missing

@@ -148,6 +148,39 @@ func TestRenderResultDoesNotTreatEmptyAssetPathsAsEscapes(t *testing.T) {
 	}
 }
 
+func TestRenderResultPreservesEmptyAltImageSourceOrder(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "a.png"), "a")
+	writeFile(t, filepath.Join(root, "b.png"), "b")
+	result, err := RenderStringResult(root, "`a.png`\n\n![](b.png)\n\n![](a.png)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []RenderAsset{
+		{Reference: "b.png", Path: "b.png", Status: AssetAvailable},
+		{Reference: "a.png", Path: "a.png", Status: AssetAvailable},
+	}
+	if !reflect.DeepEqual(result.Metadata.Assets, want) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, want)
+	}
+}
+
+func TestRenderResultTreatsInvalidPercentEscapeAsLiteralLocalPath(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "bad%zz.png"), "image")
+	result, err := RenderStringResult(root, `![image](bad%zz.png)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []RenderAsset{{Reference: "bad%zz.png", Path: "bad%zz.png", Status: AssetAvailable}}
+	if !reflect.DeepEqual(result.Metadata.Assets, want) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, want)
+	}
+	if len(result.Metadata.Diagnostics) != 0 {
+		t.Fatalf("unexpected diagnostics: %#v", result.Metadata.Diagnostics)
+	}
+}
+
 func TestLegacyRenderAPIStillReturnsFrontMatter(t *testing.T) {
 	html, fm, err := RenderString(t.TempDir(), "---\ntitle: Legacy\n---\n# Body")
 	if err != nil {

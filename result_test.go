@@ -48,6 +48,7 @@ func TestRenderResultMetadataContract(t *testing.T) {
 		{Kind: LinkEmail, Target: "team@example.com"},
 		{Kind: LinkExternal, Target: "www.example.com"},
 		{Kind: LinkInternal, Target: "?v=1", Path: "document.md"},
+		{Kind: LinkInternal, Target: "", Path: "document.md"},
 	}
 	if !reflect.DeepEqual(result.Metadata.Links, wantLinks) {
 		t.Fatalf("links = %#v, want %#v", result.Metadata.Links, wantLinks)
@@ -136,6 +137,22 @@ func TestRenderResultClassifiesDanglingEscapingSymlink(t *testing.T) {
 	}
 	if len(result.Metadata.Diagnostics) != 1 || result.Metadata.Diagnostics[0].Code != "asset_outside_root" {
 		t.Fatalf("unexpected diagnostics: %#v", result.Metadata.Diagnostics)
+	}
+}
+
+func TestRenderResultDoesNotExposeLinkPathThroughEscapingSymlink(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, "linked")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	result, err := RenderStringResult(root, `[secret](linked/secret.md)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []RenderLink{{Kind: LinkInternal, Target: "linked/secret.md"}}
+	if !reflect.DeepEqual(result.Metadata.Links, want) {
+		t.Fatalf("links = %#v, want %#v", result.Metadata.Links, want)
 	}
 }
 

@@ -285,7 +285,7 @@ func (c *metadataCollector) addLink(baseDir, target, classificationTarget string
 		link.Kind = LinkExternal
 	default:
 		link.Kind = LinkInternal
-		if full, ok := c.resolveLocalReference(baseDir, target); ok {
+		if full, ok := c.resolveLocalReference(baseDir, target); ok && c.linkPathWithinRoot(full) {
 			link.Path = c.relativePath(full)
 		}
 	}
@@ -354,7 +354,8 @@ func (c *metadataCollector) addAsset(baseDir, reference string) {
 func (c *metadataCollector) resolveLocalReference(baseDir, reference string) (string, bool) {
 	p := localReferencePath(reference)
 	if p == "" {
-		if strings.HasPrefix(normalizeMarkdownDestination(reference), "?") && c.sourcePath != "" {
+		normalizedReference := normalizeMarkdownDestination(reference)
+		if (normalizedReference == "" || strings.HasPrefix(normalizedReference, "?")) && c.sourcePath != "" {
 			return c.sourcePath, isWithin(c.root, c.sourcePath)
 		}
 		return "", false
@@ -367,6 +368,17 @@ func (c *metadataCollector) resolveLocalReference(baseDir, reference string) (st
 	}
 	full = filepath.Clean(full)
 	return full, isWithin(c.root, full)
+}
+
+func (c *metadataCollector) linkPathWithinRoot(full string) bool {
+	if !c.resolveSymlink {
+		return true
+	}
+	if _, err := resolveWithinRoot(c.root, full); err == nil {
+		return true
+	}
+	escapes, err := missingPathEscapesRoot(c.root, full)
+	return err == nil && !escapes
 }
 
 func (c *metadataCollector) relativePath(path string) string {

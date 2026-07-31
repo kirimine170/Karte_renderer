@@ -32,8 +32,9 @@ The metadata fields have these semantics:
 - `links` contains Markdown links in source order. Internal targets include a
   normalized project-relative `path`; URL query and fragment parts remain in
   `target`. `target` preserves the source spelling while link classification
-  uses the CommonMark-normalized destination. A query-only target resolves to
-  the entry document path when rendering a file.
+  uses the CommonMark-normalized destination. Empty and query-only targets
+  resolve to the entry document path when rendering a file. Internal paths
+  that escape the project root through a symlink are not exposed.
 - `assets` contains Markdown images in source order and classifies them as
   `available`, `missing`, `external`, `embedded`, `unresolved`, `unavailable`,
   or `outside-root`. `unresolved` means that a valid reference has no

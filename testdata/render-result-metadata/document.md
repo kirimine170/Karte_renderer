@@ -20,6 +20,7 @@ https://example.com/bare
 <team@example.com>
 www.example.com
 [Refresh](?v=1)
+[Self]()
 
 ![Diagram](assets/diagram.svg)
 ![Missing](assets/missing.png)

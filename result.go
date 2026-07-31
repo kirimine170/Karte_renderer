@@ -288,24 +288,80 @@ func mathSourceRanges(source []byte, document ast.Node) []sourceRange {
 		start := max(protectedRange.start, 0)
 		end := min(protectedRange.end, len(masked))
 		for i := start; i < end; i++ {
-			if masked[i] == '$' {
+			if masked[i] != '\n' && masked[i] != '\r' {
 				masked[i] = ' '
 			}
 		}
 	}
 
-	displayMatches := katexDisplayRe.FindAllIndex(masked, -1)
+	normalized := normalizeMathSource(masked)
+	displayMatches := katexDisplayRe.FindAllIndex(normalized.value, -1)
 	ranges := make([]sourceRange, 0, len(displayMatches))
 	for _, match := range displayMatches {
-		ranges = append(ranges, sourceRange{start: match[0], end: match[1]})
+		ranges = append(ranges, normalized.sourceRange(match))
 	}
-	for _, match := range katexInlineRe.FindAllIndex(masked, -1) {
-		if !sourceOffsetInRanges(match[0], ranges) {
-			ranges = append(ranges, sourceRange{start: match[0], end: match[1]})
+	for _, match := range katexInlineRe.FindAllIndex(normalized.value, -1) {
+		sourceMatch := normalized.sourceRange(match)
+		if !sourceOffsetInRanges(sourceMatch.start, ranges) {
+			ranges = append(ranges, sourceMatch)
 		}
 	}
 	sort.Slice(ranges, func(i, j int) bool { return ranges[i].start < ranges[j].start })
 	return ranges
+}
+
+type normalizedSource struct {
+	value  []byte
+	starts []int
+	ends   []int
+}
+
+func normalizeMathSource(source []byte) normalizedSource {
+	var normalized normalizedSource
+	appendValue := func(value []byte, start, end int) {
+		normalized.value = append(normalized.value, value...)
+		for range value {
+			normalized.starts = append(normalized.starts, start)
+			normalized.ends = append(normalized.ends, end)
+		}
+	}
+	for i := 0; i < len(source); {
+		if source[i] == '&' {
+			end := i + 1
+			for end < len(source) && end-i <= 64 && source[end] != ';' && source[end] != '\n' {
+				end++
+			}
+			if end < len(source) && source[end] == ';' {
+				end++
+				raw := source[i:end]
+				decoded := []byte(normalizeMarkdownDestination(string(raw)))
+				if string(decoded) != string(raw) {
+					appendValue(decoded, i, end)
+					i = end
+					continue
+				}
+			}
+		}
+		if source[i] == '\\' && i+1 < len(source) {
+			raw := source[i : i+2]
+			decoded := []byte(normalizeMarkdownDestination(string(raw)))
+			if string(decoded) != string(raw) {
+				appendValue(decoded, i, i+2)
+				i += 2
+				continue
+			}
+		}
+		appendValue(source[i:i+1], i, i+1)
+		i++
+	}
+	return normalized
+}
+
+func (s normalizedSource) sourceRange(match []int) sourceRange {
+	if len(match) != 2 || match[0] < 0 || match[1] <= match[0] || match[1] > len(s.value) {
+		return sourceRange{}
+	}
+	return sourceRange{start: s.starts[match[0]], end: s.ends[match[1]-1]}
 }
 
 func codeSourceRanges(document ast.Node) []sourceRange {

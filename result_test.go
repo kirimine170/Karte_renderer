@@ -218,6 +218,18 @@ $$$
 	}
 }
 
+func TestRenderResultNormalizesMathDelimiters(t *testing.T) {
+	result, err := RenderStringResult(t.TempDir(), `&#36;![numeric](numeric.png)$
+
+\$![escaped](escaped.png)$`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Metadata.Assets) != 0 || len(result.Metadata.Diagnostics) != 0 {
+		t.Fatalf("unexpected metadata: assets=%#v diagnostics=%#v", result.Metadata.Assets, result.Metadata.Diagnostics)
+	}
+}
+
 func TestRenderResultIgnoresCodeDollarsWhenFindingMath(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "x.png"), "x")

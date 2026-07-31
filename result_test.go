@@ -43,6 +43,8 @@ func TestRenderResultMetadataContract(t *testing.T) {
 		{Kind: LinkEmail, Target: "mailto:team@example.com"},
 		{Kind: LinkExternal, Target: "https://example.com/autolink"},
 		{Kind: LinkExternal, Target: "https://example.com/bare"},
+		{Kind: LinkEmail, Target: "team@example.com"},
+		{Kind: LinkExternal, Target: "www.example.com"},
 	}
 	if !reflect.DeepEqual(result.Metadata.Links, wantLinks) {
 		t.Fatalf("links = %#v, want %#v", result.Metadata.Links, wantLinks)

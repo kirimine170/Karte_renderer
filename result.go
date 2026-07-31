@@ -208,10 +208,11 @@ func (c *metadataCollector) collectReferences(baseDir, markdown string) {
 	source := []byte(markdown)
 	document := newMarkdown(false).Parser().Parse(text.NewReader(source))
 	type referenceOccurrence struct {
-		offset   int
-		sequence int
-		asset    bool
-		target   string
+		offset               int
+		sequence             int
+		asset                bool
+		target               string
+		classificationTarget string
 	}
 	var references []referenceOccurrence
 	_ = ast.Walk(document, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -227,12 +228,18 @@ func (c *metadataCollector) collectReferences(baseDir, markdown string) {
 			target := string(node.Destination)
 			references = append(references, referenceOccurrence{offset: referenceSourceOffset(node, len(source), sequence), sequence: sequence, target: target})
 		case *ast.AutoLink:
-			target := string(node.URL(source))
-			if node.AutoLinkType == ast.AutoLinkEmail && !strings.HasPrefix(strings.ToLower(target), "mailto:") {
-				target = "mailto:" + target
+			target := string(node.Label(source))
+			classificationTarget := string(node.URL(source))
+			if node.AutoLinkType == ast.AutoLinkEmail && !strings.HasPrefix(strings.ToLower(classificationTarget), "mailto:") {
+				classificationTarget = "mailto:" + classificationTarget
 			}
 			offset := referenceSourceOffset(node, len(source), sequence)
-			references = append(references, referenceOccurrence{offset: offset, sequence: sequence, target: target})
+			references = append(references, referenceOccurrence{
+				offset:               offset,
+				sequence:             sequence,
+				target:               target,
+				classificationTarget: classificationTarget,
+			})
 		}
 		return ast.WalkContinue, nil
 	})
@@ -246,7 +253,7 @@ func (c *metadataCollector) collectReferences(baseDir, markdown string) {
 		if reference.asset {
 			c.addAsset(baseDir, reference.target)
 		} else {
-			c.addLink(baseDir, reference.target)
+			c.addLink(baseDir, reference.target, reference.classificationTarget)
 		}
 	}
 }
@@ -258,9 +265,12 @@ func referenceSourceOffset(node ast.Node, sourceLength, sequence int) int {
 	return sourceLength + sequence
 }
 
-func (c *metadataCollector) addLink(baseDir, target string) {
+func (c *metadataCollector) addLink(baseDir, target, classificationTarget string) {
 	link := RenderLink{Target: target}
-	normalizedTarget := normalizeMarkdownDestination(target)
+	if classificationTarget == "" {
+		classificationTarget = target
+	}
+	normalizedTarget := normalizeMarkdownDestination(classificationTarget)
 	switch {
 	case strings.HasPrefix(normalizedTarget, "#"):
 		link.Kind = LinkFragment

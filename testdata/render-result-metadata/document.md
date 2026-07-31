@@ -17,6 +17,8 @@ project: karte-format
 [Team](mailto:team@example.com)
 <https://example.com/autolink>
 https://example.com/bare
+<team@example.com>
+www.example.com
 
 ![Diagram](assets/diagram.svg)
 ![Missing](assets/missing.png)

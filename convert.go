@@ -426,9 +426,10 @@ func fileURL(path string) string {
 func fileURLForOS(path, goos string) string {
 	urlPath := path
 	if goos == "windows" {
-		const extendedPathPrefix = `\\?\`
-		if len(path) >= len(extendedPathPrefix) && strings.EqualFold(path[:len(extendedPathPrefix)], extendedPathPrefix) {
-			path = path[len(extendedPathPrefix):]
+		const devicePathPrefixLength = len(`\\?\`)
+		if len(path) >= devicePathPrefixLength &&
+			(strings.EqualFold(path[:devicePathPrefixLength], `\\?\`) || strings.EqualFold(path[:devicePathPrefixLength], `\\.\`)) {
+			path = path[devicePathPrefixLength:]
 			const uncPrefix = `UNC\`
 			if len(path) >= len(uncPrefix) && strings.EqualFold(path[:len(uncPrefix)], uncPrefix) {
 				path = `\\` + path[len(uncPrefix):]

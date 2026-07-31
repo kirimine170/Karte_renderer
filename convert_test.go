@@ -79,6 +79,22 @@ func TestFileURLNormalizesExtendedWindowsUNCPath(t *testing.T) {
 	}
 }
 
+func TestFileURLNormalizesLocalDeviceWindowsDrivePath(t *testing.T) {
+	got := fileURLForOS(`\\.\C:\docs\`, "windows")
+	want := "file:///C:/docs/"
+	if got != want {
+		t.Fatalf("fileURLForOS() = %q, want %q", got, want)
+	}
+}
+
+func TestFileURLNormalizesLocalDeviceWindowsUNCPath(t *testing.T) {
+	got := fileURLForOS(`\\.\UNC\server\share\docs\`, "windows")
+	want := "file://server/share/docs/"
+	if got != want {
+		t.Fatalf("fileURLForOS() = %q, want %q", got, want)
+	}
+}
+
 func TestConvertDocumentWithNoCSS(t *testing.T) {
 	root := t.TempDir()
 	input := filepath.Join(root, "page.md")

@@ -32,8 +32,67 @@ func TestConvertDocumentToHTML(t *testing.T) {
 	assertContains(t, html, "<h1>Hello</h1>")
 	assertContains(t, html, `<base href="file://`)
 	assertContains(t, html, "/docs/")
+	if runtime.GOOS == "windows" && (strings.Contains(html, `%5C`) || strings.Contains(html, `\\`)) {
+		t.Fatalf("base URL contains Windows path separators:\n%s", html)
+	}
 	assertContains(t, html, `id="karte-renderer-css"`)
 	assertContains(t, html, "#c2b4ff")
+}
+
+func TestFileURLNormalizesWindowsPath(t *testing.T) {
+	got := fileURLForOS(`C:\Users\Karte User\docs\`, "windows")
+	want := "file:///C:/Users/Karte%20User/docs/"
+	if got != want {
+		t.Fatalf("fileURLForOS() = %q, want %q", got, want)
+	}
+}
+
+func TestFileURLPreservesPOSIXBackslash(t *testing.T) {
+	got := fileURLForOS(`/tmp/a\b/docs/`, "linux")
+	want := "file:///tmp/a%5Cb/docs/"
+	if got != want {
+		t.Fatalf("fileURLForOS() = %q, want %q", got, want)
+	}
+}
+
+func TestFileURLUsesUNCServerAsHost(t *testing.T) {
+	got := fileURLForOS(`\\server\share\docs\`, "windows")
+	want := "file://server/share/docs/"
+	if got != want {
+		t.Fatalf("fileURLForOS() = %q, want %q", got, want)
+	}
+}
+
+func TestFileURLNormalizesExtendedWindowsDrivePath(t *testing.T) {
+	got := fileURLForOS(`\\?\C:\docs\`, "windows")
+	want := "file:///C:/docs/"
+	if got != want {
+		t.Fatalf("fileURLForOS() = %q, want %q", got, want)
+	}
+}
+
+func TestFileURLNormalizesExtendedWindowsUNCPath(t *testing.T) {
+	got := fileURLForOS(`\\?\UNC\server\share\docs\`, "windows")
+	want := "file://server/share/docs/"
+	if got != want {
+		t.Fatalf("fileURLForOS() = %q, want %q", got, want)
+	}
+}
+
+func TestFileURLNormalizesLocalDeviceWindowsDrivePath(t *testing.T) {
+	got := fileURLForOS(`\\.\C:\docs\`, "windows")
+	want := "file:///C:/docs/"
+	if got != want {
+		t.Fatalf("fileURLForOS() = %q, want %q", got, want)
+	}
+}
+
+func TestFileURLNormalizesLocalDeviceWindowsUNCPath(t *testing.T) {
+	got := fileURLForOS(`\\.\UNC\server\share\docs\`, "windows")
+	want := "file://server/share/docs/"
+	if got != want {
+		t.Fatalf("fileURLForOS() = %q, want %q", got, want)
+	}
 }
 
 func TestConvertDocumentWithNoCSS(t *testing.T) {

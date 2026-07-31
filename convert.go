@@ -420,9 +420,16 @@ func insertBaseURL(document, dir string) string {
 }
 
 func fileURL(path string) string {
-	urlPath := strings.ReplaceAll(filepath.ToSlash(path), `\`, "/")
-	if len(urlPath) >= 2 && urlPath[1] == ':' && !strings.HasPrefix(urlPath, "/") {
-		urlPath = "/" + urlPath
+	return fileURLForOS(path, runtime.GOOS)
+}
+
+func fileURLForOS(path, goos string) string {
+	urlPath := filepath.ToSlash(path)
+	if goos == "windows" {
+		urlPath = strings.ReplaceAll(path, `\`, "/")
+		if len(urlPath) >= 2 && urlPath[1] == ':' && !strings.HasPrefix(urlPath, "/") {
+			urlPath = "/" + urlPath
+		}
 	}
 	return (&url.URL{Scheme: "file", Path: urlPath}).String()
 }

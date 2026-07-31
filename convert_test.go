@@ -40,10 +40,18 @@ func TestConvertDocumentToHTML(t *testing.T) {
 }
 
 func TestFileURLNormalizesWindowsPath(t *testing.T) {
-	got := fileURL(`C:\Users\Karte User\docs\`)
+	got := fileURLForOS(`C:\Users\Karte User\docs\`, "windows")
 	want := "file:///C:/Users/Karte%20User/docs/"
 	if got != want {
-		t.Fatalf("fileURL() = %q, want %q", got, want)
+		t.Fatalf("fileURLForOS() = %q, want %q", got, want)
+	}
+}
+
+func TestFileURLPreservesPOSIXBackslash(t *testing.T) {
+	got := fileURLForOS(`/tmp/a\b/docs/`, "linux")
+	want := "file:///tmp/a%5Cb/docs/"
+	if got != want {
+		t.Fatalf("fileURLForOS() = %q, want %q", got, want)
 	}
 }
 

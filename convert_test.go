@@ -32,8 +32,19 @@ func TestConvertDocumentToHTML(t *testing.T) {
 	assertContains(t, html, "<h1>Hello</h1>")
 	assertContains(t, html, `<base href="file://`)
 	assertContains(t, html, "/docs/")
+	if strings.Contains(html, `%5C`) || strings.Contains(html, `\\`) {
+		t.Fatalf("base URL contains Windows path separators:\n%s", html)
+	}
 	assertContains(t, html, `id="karte-renderer-css"`)
 	assertContains(t, html, "#c2b4ff")
+}
+
+func TestFileURLNormalizesWindowsPath(t *testing.T) {
+	got := fileURL(`C:\Users\Karte User\docs\`)
+	want := "file:///C:/Users/Karte%20User/docs/"
+	if got != want {
+		t.Fatalf("fileURL() = %q, want %q", got, want)
+	}
 }
 
 func TestConvertDocumentWithNoCSS(t *testing.T) {

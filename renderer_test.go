@@ -1,7 +1,9 @@
 package renderer
 
 import (
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -205,7 +207,7 @@ func TestKatexNotProcessedInsideCode(t *testing.T) {
 
 func TestExportPDFReportsMissingBinary(t *testing.T) {
 	err := ExportPDFWithBinary(filepath.Join(t.TempDir(), "missing-wkhtmltopdf"), "in.html", "out.pdf")
-	if err == nil || !strings.Contains(err.Error(), "no such file") {
+	if err == nil || (!errors.Is(err, os.ErrNotExist) && !errors.Is(err, exec.ErrNotFound)) {
 		t.Fatalf("expected missing binary error, got %v", err)
 	}
 }

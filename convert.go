@@ -411,12 +411,20 @@ func insertBaseURL(document, dir string) string {
 	if !strings.HasSuffix(abs, string(os.PathSeparator)) {
 		abs += string(os.PathSeparator)
 	}
-	tag := `<base href="` + (&url.URL{Scheme: "file", Path: abs}).String() + `">`
+	tag := `<base href="` + fileURL(abs) + `">`
 	if i := strings.Index(strings.ToLower(document), "<head>"); i >= 0 {
 		at := i + len("<head>")
 		return document[:at] + tag + document[at:]
 	}
 	return tag + document
+}
+
+func fileURL(path string) string {
+	urlPath := strings.ReplaceAll(filepath.ToSlash(path), `\`, "/")
+	if len(urlPath) >= 2 && urlPath[1] == ':' && !strings.HasPrefix(urlPath, "/") {
+		urlPath = "/" + urlPath
+	}
+	return (&url.URL{Scheme: "file", Path: urlPath}).String()
 }
 
 func writeFileAtomic(path string, content []byte) error {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
+	gmutil "github.com/yuin/goldmark/util"
 )
 
 // RenderMetadataSchemaVersion identifies the stable shape and semantics of RenderMetadata.
@@ -349,6 +350,7 @@ func (c *metadataCollector) relativePath(path string) string {
 }
 
 func isExternalReference(reference string) bool {
+	reference = normalizeMarkdownDestination(reference)
 	if strings.HasPrefix(reference, "//") {
 		return true
 	}
@@ -370,6 +372,7 @@ func referenceHasNoPath(reference string) bool {
 }
 
 func localReferencePath(reference string) string {
+	reference = normalizeMarkdownDestination(reference)
 	if end := strings.IndexAny(reference, "?#"); end >= 0 {
 		reference = reference[:end]
 	}
@@ -377,6 +380,13 @@ func localReferencePath(reference string) string {
 		return decoded
 	}
 	return reference
+}
+
+func normalizeMarkdownDestination(reference string) string {
+	normalized := gmutil.UnescapePunctuations([]byte(reference))
+	normalized = gmutil.ResolveNumericReferences(normalized)
+	normalized = gmutil.ResolveEntityNames(normalized)
+	return string(normalized)
 }
 
 // missingPathEscapesRoot resolves the nearest existing ancestor so a missing

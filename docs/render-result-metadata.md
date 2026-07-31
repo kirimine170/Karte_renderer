@@ -48,9 +48,11 @@ order is meaningful to callers.
 
 Local paths are resolved from the entry document directory. A leading `/`
 means the configured project root. Query strings and fragments do not
-participate in filesystem resolution. Lexical traversal and symlink escape are
-reported as `outside-root`; the collector never reads an asset outside the
-trusted root.
+participate in filesystem resolution. CommonMark backslash escapes, numeric
+references, and named HTML entities are normalized with the same Goldmark
+rules used by HTML rendering before path resolution. Lexical traversal and
+symlink escape are reported as `outside-root`; the collector never reads an
+asset outside the trusted root.
 
 The metadata collector does not fetch external URLs. `external` therefore
 means externally addressed, not network-verified.

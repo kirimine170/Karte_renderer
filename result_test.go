@@ -199,6 +199,28 @@ func TestRenderResultTreatsInvalidPercentEscapeAsLiteralLocalPath(t *testing.T) 
 	}
 }
 
+func TestRenderResultNormalizesCommonMarkEscapesForLocalAssets(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "diagram(1).png"), "image")
+	writeFile(t, filepath.Join(root, "a&b.png"), "image")
+	result, err := RenderStringResult(root, `![escaped](diagram\(1\).png)
+
+![entity](a&amp;b.png)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []RenderAsset{
+		{Reference: `diagram\(1\).png`, Path: "diagram(1).png", Status: AssetAvailable},
+		{Reference: "a&amp;b.png", Path: "a&b.png", Status: AssetAvailable},
+	}
+	if !reflect.DeepEqual(result.Metadata.Assets, want) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, want)
+	}
+	if len(result.Metadata.Diagnostics) != 0 {
+		t.Fatalf("unexpected diagnostics: %#v", result.Metadata.Diagnostics)
+	}
+}
+
 func TestLegacyRenderAPIStillReturnsFrontMatter(t *testing.T) {
 	html, fm, err := RenderString(t.TempDir(), "---\ntitle: Legacy\n---\n# Body")
 	if err != nil {

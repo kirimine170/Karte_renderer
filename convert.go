@@ -427,6 +427,16 @@ func fileURLForOS(path, goos string) string {
 	urlPath := filepath.ToSlash(path)
 	if goos == "windows" {
 		urlPath = strings.ReplaceAll(path, `\`, "/")
+		if strings.HasPrefix(urlPath, "//") {
+			serverAndPath := strings.TrimPrefix(urlPath, "//")
+			server, sharePath, found := strings.Cut(serverAndPath, "/")
+			if server != "" {
+				if !found {
+					sharePath = ""
+				}
+				return (&url.URL{Scheme: "file", Host: server, Path: "/" + sharePath}).String()
+			}
+		}
 		if len(urlPath) >= 2 && urlPath[1] == ':' && !strings.HasPrefix(urlPath, "/") {
 			urlPath = "/" + urlPath
 		}

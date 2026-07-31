@@ -55,6 +55,14 @@ func TestFileURLPreservesPOSIXBackslash(t *testing.T) {
 	}
 }
 
+func TestFileURLUsesUNCServerAsHost(t *testing.T) {
+	got := fileURLForOS(`\\server\share\docs\`, "windows")
+	want := "file://server/share/docs/"
+	if got != want {
+		t.Fatalf("fileURLForOS() = %q, want %q", got, want)
+	}
+}
+
 func TestConvertDocumentWithNoCSS(t *testing.T) {
 	root := t.TempDir()
 	input := filepath.Join(root, "page.md")

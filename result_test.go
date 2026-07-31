@@ -218,6 +218,26 @@ $$$
 	}
 }
 
+func TestRenderResultIgnoresCodeDollarsWhenFindingMath(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "x.png"), "x")
+	cases := []string{
+		"`$` ![x](x.png) $",
+		"```text\n$\n```\n\n![x](x.png) $",
+		"<code>$</code> ![x](x.png) $",
+	}
+	for _, markdown := range cases {
+		result, err := RenderStringResult(root, markdown)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []RenderAsset{{Reference: "x.png", Path: "x.png", Status: AssetAvailable}}
+		if !reflect.DeepEqual(result.Metadata.Assets, want) {
+			t.Fatalf("markdown %q: assets = %#v, want %#v", markdown, result.Metadata.Assets, want)
+		}
+	}
+}
+
 func TestRenderResultDoesNotTreatEmptyAssetPathsAsEscapes(t *testing.T) {
 	result, err := RenderStringResult(t.TempDir(), "![](#icon)\n\n![](?v=1)\n\n![]()")
 	if err != nil {

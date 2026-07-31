@@ -76,6 +76,8 @@ var fmRe = regexp.MustCompile(`(?s)\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\
 var importRe = regexp.MustCompile(`(?m)^@import\(([^)]*)\)[ \t]*\r?$`)
 var katexDisplayRe = regexp.MustCompile(`(?s)\$\$\$(.+?)\$\$\$`)
 var katexInlineRe = regexp.MustCompile(`\$([^$\n]+?)\$`)
+var katexProtectedPreRe = regexp.MustCompile(`(?s)<pre[^>]*>.*?</pre>`)
+var katexProtectedCodeRe = regexp.MustCompile(`(?s)<code[^>]*>.*?</code>`)
 
 // RenderMarkdown renders a Markdown file below root, returning HTML and front matter.
 func RenderMarkdown(root string, path string) (string, FrontMatter, error) {
@@ -569,8 +571,8 @@ func processKaTeX(s string) string {
 			return k
 		})
 	}
-	s = protect(regexp.MustCompile(`(?s)<pre[^>]*>.*?</pre>`), s)
-	s = protect(regexp.MustCompile(`(?s)<code[^>]*>.*?</code>`), s)
+	s = protect(katexProtectedPreRe, s)
+	s = protect(katexProtectedCodeRe, s)
 	s = katexDisplayRe.ReplaceAllStringFunc(s, func(m string) string {
 		expr := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(m, "$$$"), "$$$"))
 		expr = html.UnescapeString(expr)

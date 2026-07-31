@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -212,7 +213,7 @@ func (c *metadataCollector) addDependency(kind DependencyKind, path string) {
 func (c *metadataCollector) collectReferences(baseDir, markdown string) {
 	source := []byte(markdown)
 	document := newMarkdown(false).Parser().Parse(text.NewReader(source))
-	mathRanges := mathSourceRanges(source)
+	mathRanges := mathSourceRanges(source, document)
 	type referenceOccurrence struct {
 		offset               int
 		sequence             int
@@ -275,18 +276,61 @@ type sourceRange struct {
 	end   int
 }
 
-func mathSourceRanges(source []byte) []sourceRange {
-	displayMatches := katexDisplayRe.FindAllIndex(source, -1)
+func mathSourceRanges(source []byte, document ast.Node) []sourceRange {
+	masked := append([]byte(nil), source...)
+	protectedRanges := codeSourceRanges(document)
+	for _, re := range []*regexp.Regexp{katexProtectedPreRe, katexProtectedCodeRe} {
+		for _, match := range re.FindAllIndex(source, -1) {
+			protectedRanges = append(protectedRanges, sourceRange{start: match[0], end: match[1]})
+		}
+	}
+	for _, protectedRange := range protectedRanges {
+		start := max(protectedRange.start, 0)
+		end := min(protectedRange.end, len(masked))
+		for i := start; i < end; i++ {
+			if masked[i] == '$' {
+				masked[i] = ' '
+			}
+		}
+	}
+
+	displayMatches := katexDisplayRe.FindAllIndex(masked, -1)
 	ranges := make([]sourceRange, 0, len(displayMatches))
 	for _, match := range displayMatches {
 		ranges = append(ranges, sourceRange{start: match[0], end: match[1]})
 	}
-	for _, match := range katexInlineRe.FindAllIndex(source, -1) {
+	for _, match := range katexInlineRe.FindAllIndex(masked, -1) {
 		if !sourceOffsetInRanges(match[0], ranges) {
 			ranges = append(ranges, sourceRange{start: match[0], end: match[1]})
 		}
 	}
 	sort.Slice(ranges, func(i, j int) bool { return ranges[i].start < ranges[j].start })
+	return ranges
+}
+
+func codeSourceRanges(document ast.Node) []sourceRange {
+	var ranges []sourceRange
+	_ = ast.Walk(document, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		switch node := node.(type) {
+		case *ast.CodeSpan:
+			for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+				if textNode, ok := child.(*ast.Text); ok {
+					segment := textNode.Segment
+					ranges = append(ranges, sourceRange{start: segment.Start, end: segment.Stop})
+				}
+			}
+		case *ast.CodeBlock, *ast.FencedCodeBlock:
+			lines := node.Lines()
+			for i := 0; i < lines.Len(); i++ {
+				segment := lines.At(i)
+				ranges = append(ranges, sourceRange{start: segment.Start, end: segment.Stop})
+			}
+		}
+		return ast.WalkContinue, nil
+	})
 	return ranges
 }
 

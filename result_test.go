@@ -116,6 +116,24 @@ func TestRenderResultClassifiesMissingAssetBelowEscapingSymlink(t *testing.T) {
 	}
 }
 
+func TestRenderResultClassifiesDanglingEscapingSymlink(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(t.TempDir(), "missing.png")
+	if err := os.Symlink(target, filepath.Join(root, "image.png")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	result, err := RenderStringResult(root, `![outside](image.png)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Metadata.Assets) != 1 || result.Metadata.Assets[0].Status != AssetOutsideRoot {
+		t.Fatalf("unexpected assets: %#v", result.Metadata.Assets)
+	}
+	if len(result.Metadata.Diagnostics) != 1 || result.Metadata.Diagnostics[0].Code != "asset_outside_root" {
+		t.Fatalf("unexpected diagnostics: %#v", result.Metadata.Diagnostics)
+	}
+}
+
 func TestRenderResultPreservesReferenceSourceOrderAcrossFootnotes(t *testing.T) {
 	result, err := RenderStringResult(t.TempDir(), "[^x]: [foot](foot.md)\n\n[after](after.md)\n\nFootnote[^x]")
 	if err != nil {

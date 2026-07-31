@@ -386,13 +386,36 @@ func missingPathEscapesRoot(root, full string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	return missingPathEscapesResolvedRoot(resolvedRoot, full, map[string]bool{})
+}
+
+func missingPathEscapesResolvedRoot(resolvedRoot, full string, seen map[string]bool) (bool, error) {
 	for candidate := full; ; candidate = filepath.Dir(candidate) {
-		if _, err := os.Lstat(candidate); err == nil {
+		if info, err := os.Lstat(candidate); err == nil {
 			resolved, err := filepath.EvalSymlinks(candidate)
+			if err == nil {
+				return !isWithin(resolvedRoot, resolved), nil
+			}
+			if info.Mode()&os.ModeSymlink == 0 {
+				return false, err
+			}
+			candidate = filepath.Clean(candidate)
+			if seen[candidate] {
+				return false, fmt.Errorf("symlink cycle at %s", candidate)
+			}
+			seen[candidate] = true
+			target, err := os.Readlink(candidate)
 			if err != nil {
 				return false, err
 			}
-			return !isWithin(resolvedRoot, resolved), nil
+			if !filepath.IsAbs(target) {
+				target = filepath.Join(filepath.Dir(candidate), target)
+			}
+			target = filepath.Clean(target)
+			if !isWithin(resolvedRoot, target) {
+				return true, nil
+			}
+			return missingPathEscapesResolvedRoot(resolvedRoot, target, seen)
 		} else if !os.IsNotExist(err) {
 			return false, err
 		}

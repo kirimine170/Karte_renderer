@@ -2,6 +2,7 @@ package renderer
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -40,6 +41,8 @@ func TestRenderResultMetadataContract(t *testing.T) {
 		{Kind: LinkInternal, Target: "notes.md#details", Path: "notes.md"},
 		{Kind: LinkFragment, Target: "#summary"},
 		{Kind: LinkEmail, Target: "mailto:team@example.com"},
+		{Kind: LinkExternal, Target: "https://example.com/autolink"},
+		{Kind: LinkExternal, Target: "https://example.com/bare"},
 	}
 	if !reflect.DeepEqual(result.Metadata.Links, wantLinks) {
 		t.Fatalf("links = %#v, want %#v", result.Metadata.Links, wantLinks)
@@ -84,6 +87,24 @@ func TestRenderResultMetadataContract(t *testing.T) {
 func TestRenderResultRejectsAssetOutsideRootWithoutFailingRender(t *testing.T) {
 	root := t.TempDir()
 	result, err := RenderStringResult(root, `![outside](../outside.png)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Metadata.Assets) != 1 || result.Metadata.Assets[0].Status != AssetOutsideRoot {
+		t.Fatalf("unexpected assets: %#v", result.Metadata.Assets)
+	}
+	if len(result.Metadata.Diagnostics) != 1 || result.Metadata.Diagnostics[0].Code != "asset_outside_root" {
+		t.Fatalf("unexpected diagnostics: %#v", result.Metadata.Diagnostics)
+	}
+}
+
+func TestRenderResultClassifiesMissingAssetBelowEscapingSymlink(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, "linked")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	result, err := RenderStringResult(root, `![outside](linked/missing.png)`)
 	if err != nil {
 		t.Fatal(err)
 	}

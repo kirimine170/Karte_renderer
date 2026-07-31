@@ -3,10 +3,10 @@ package renderer
 import (
 	"fmt"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
 )
@@ -163,8 +163,8 @@ func (c *metadataCollector) addDependency(kind DependencyKind, path string) {
 }
 
 func (c *metadataCollector) collectReferences(baseDir, markdown string) {
-	parser := goldmark.New().Parser()
-	document := parser.Parse(text.NewReader([]byte(markdown)))
+	source := []byte(markdown)
+	document := newMarkdown(false).Parser().Parse(text.NewReader(source))
 	_ = ast.Walk(document, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -174,6 +174,12 @@ func (c *metadataCollector) collectReferences(baseDir, markdown string) {
 			c.addAsset(baseDir, string(node.Destination))
 		case *ast.Link:
 			c.addLink(baseDir, string(node.Destination))
+		case *ast.AutoLink:
+			target := string(node.URL(source))
+			if node.AutoLinkType == ast.AutoLinkEmail && !strings.HasPrefix(strings.ToLower(target), "mailto:") {
+				target = "mailto:" + target
+			}
+			c.addLink(baseDir, target)
 		}
 		return ast.WalkContinue, nil
 	})
@@ -219,7 +225,7 @@ func (c *metadataCollector) addAsset(baseDir, reference string) {
 		if c.resolveSymlink {
 			if resolved, err := resolveWithinRoot(c.root, full); err == nil {
 				full = resolved
-			} else if _, statErr := c.fs.Stat(full); statErr == nil {
+			} else if escapes, _ := missingPathEscapesRoot(c.root, full); escapes {
 				asset.Status = AssetOutsideRoot
 				c.diagnostics = append(c.diagnostics, RenderDiagnostic{
 					Severity: DiagnosticWarning,
@@ -275,4 +281,28 @@ func (c *metadataCollector) relativePath(path string) string {
 func isExternalReference(reference string) bool {
 	u, err := url.Parse(reference)
 	return err == nil && (u.Scheme != "" || u.Host != "")
+}
+
+// missingPathEscapesRoot resolves the nearest existing ancestor so a missing
+// leaf below an escaping symlink is not misclassified as an ordinary miss.
+func missingPathEscapesRoot(root, full string) (bool, error) {
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return false, err
+	}
+	for candidate := full; ; candidate = filepath.Dir(candidate) {
+		if _, err := os.Lstat(candidate); err == nil {
+			resolved, err := filepath.EvalSymlinks(candidate)
+			if err != nil {
+				return false, err
+			}
+			return !isWithin(resolvedRoot, resolved), nil
+		} else if !os.IsNotExist(err) {
+			return false, err
+		}
+		parent := filepath.Dir(candidate)
+		if parent == candidate {
+			return false, nil
+		}
+	}
 }

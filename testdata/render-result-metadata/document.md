@@ -15,6 +15,8 @@ project: karte-format
 [Local notes](notes.md#details)
 [Summary](#summary)
 [Team](mailto:team@example.com)
+<https://example.com/autolink>
+https://example.com/bare
 
 ![Diagram](assets/diagram.svg)
 ![Missing](assets/missing.png)

@@ -282,6 +282,15 @@ func frontMatterStringList(value interface{}) ([]string, error) {
 }
 
 func markdownHTML(s string, hardwrap bool) (string, error) {
+	md := newMarkdown(hardwrap)
+	var out bytes.Buffer
+	if err := md.Convert([]byte(s), &out); err != nil {
+		return "", fmt.Errorf("render markdown: %w", err)
+	}
+	return processKaTeX(out.String()), nil
+}
+
+func newMarkdown(hardwrap bool) goldmark.Markdown {
 	rendererOptions := []goldmark.Option{
 		goldmark.WithExtensions(
 			extension.GFM,
@@ -293,12 +302,7 @@ func markdownHTML(s string, hardwrap bool) (string, error) {
 	if hardwrap {
 		rendererOptions = append(rendererOptions, goldmark.WithRendererOptions(gmhtml.WithHardWraps()))
 	}
-	md := goldmark.New(rendererOptions...)
-	var out bytes.Buffer
-	if err := md.Convert([]byte(s), &out); err != nil {
-		return "", fmt.Errorf("render markdown: %w", err)
-	}
-	return processKaTeX(out.String()), nil
+	return goldmark.New(rendererOptions...)
 }
 
 func (r *Renderer) expandImports(root, baseDir, s string, hardwrap bool) (string, error) {

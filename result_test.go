@@ -2,6 +2,8 @@ package renderer
 
 import (
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -45,6 +47,7 @@ func TestRenderResultMetadataContract(t *testing.T) {
 		{Kind: LinkExternal, Target: "https://example.com/bare"},
 		{Kind: LinkEmail, Target: "team@example.com"},
 		{Kind: LinkExternal, Target: "www.example.com"},
+		{Kind: LinkInternal, Target: "?v=1", Path: "document.md"},
 	}
 	if !reflect.DeepEqual(result.Metadata.Links, wantLinks) {
 		t.Fatalf("links = %#v, want %#v", result.Metadata.Links, wantLinks)
@@ -248,6 +251,36 @@ func TestRenderResultNormalizesCommonMarkEntitiesForDataAssets(t *testing.T) {
 	if !reflect.DeepEqual(result.Metadata.Assets, want) {
 		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, want)
 	}
+}
+
+func TestRenderResultReportsAssetStatFailures(t *testing.T) {
+	root := t.TempDir()
+	renderer := NewRenderer(statFailureFileSystem{OSFileSystem: OSFileSystem{}})
+	result, err := renderer.RenderStringResultWithOptions(root, `![locked](locked.png)`, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantAssets := []RenderAsset{{Reference: "locked.png", Path: "locked.png", Status: AssetUnavailable}}
+	if !reflect.DeepEqual(result.Metadata.Assets, wantAssets) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, wantAssets)
+	}
+	wantDiagnostics := []RenderDiagnostic{{
+		Severity: DiagnosticError,
+		Code:     "asset_stat_failed",
+		Message:  `could not inspect asset "locked.png": permission denied`,
+		Path:     "locked.png",
+	}}
+	if !reflect.DeepEqual(result.Metadata.Diagnostics, wantDiagnostics) {
+		t.Fatalf("diagnostics = %#v, want %#v", result.Metadata.Diagnostics, wantDiagnostics)
+	}
+}
+
+type statFailureFileSystem struct {
+	OSFileSystem
+}
+
+func (statFailureFileSystem) Stat(string) (fs.FileInfo, error) {
+	return nil, errors.New("permission denied")
 }
 
 func TestLegacyRenderAPIStillReturnsFrontMatter(t *testing.T) {

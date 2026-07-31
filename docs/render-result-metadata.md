@@ -32,11 +32,14 @@ The metadata fields have these semantics:
 - `links` contains Markdown links in source order. Internal targets include a
   normalized project-relative `path`; URL query and fragment parts remain in
   `target`. `target` preserves the source spelling while link classification
-  uses the CommonMark-normalized destination.
+  uses the CommonMark-normalized destination. A query-only target resolves to
+  the entry document path when rendering a file.
 - `assets` contains Markdown images in source order and classifies them as
-  `available`, `missing`, `external`, `embedded`, `unresolved`, or
-  `outside-root`. `unresolved` means that a valid reference has no filesystem
-  path, such as an empty, query-only, or fragment-only destination.
+  `available`, `missing`, `external`, `embedded`, `unresolved`, `unavailable`,
+  or `outside-root`. `unresolved` means that a valid reference has no
+  filesystem path, such as an empty, query-only, or fragment-only destination.
+  `unavailable` means that the filesystem could not inspect the resolved path
+  for a reason other than nonexistence.
 - `diagnostics` contains non-fatal findings. A missing or outside-root asset is
   a warning because the HTML render can still be useful. Fatal parse, import,
   path, and renderer failures continue to be returned as `error`.

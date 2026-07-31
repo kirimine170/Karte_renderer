@@ -114,6 +114,7 @@ const (
 	AssetExternal    AssetStatus = "external"
 	AssetEmbedded    AssetStatus = "embedded"
 	AssetUnresolved  AssetStatus = "unresolved"
+	AssetUnavailable AssetStatus = "unavailable"
 	AssetOutsideRoot AssetStatus = "outside-root"
 )
 
@@ -175,6 +176,7 @@ type metadataCollector struct {
 	assets         []RenderAsset
 	diagnostics    []RenderDiagnostic
 	dependencySeen map[string]bool
+	sourcePath     string
 }
 
 func newMetadataCollector(root string, fs FileSystem, resolveSymlink bool) *metadataCollector {
@@ -195,6 +197,9 @@ func dependencyKindForImport(kind string) DependencyKind {
 }
 
 func (c *metadataCollector) addDependency(kind DependencyKind, path string) {
+	if kind == DependencySource && c.sourcePath == "" {
+		c.sourcePath = path
+	}
 	rel := c.relativePath(path)
 	key := string(kind) + "\x00" + rel
 	if c.dependencySeen[key] {
@@ -323,12 +328,20 @@ func (c *metadataCollector) addAsset(baseDir, reference string) {
 				break
 			}
 		}
-		if _, err := c.fs.Stat(full); err != nil {
+		if _, err := c.fs.Stat(full); os.IsNotExist(err) {
 			asset.Status = AssetMissing
 			c.diagnostics = append(c.diagnostics, RenderDiagnostic{
 				Severity: DiagnosticWarning,
 				Code:     "missing_asset",
 				Message:  fmt.Sprintf("asset %q does not exist", asset.Path),
+				Path:     asset.Path,
+			})
+		} else if err != nil {
+			asset.Status = AssetUnavailable
+			c.diagnostics = append(c.diagnostics, RenderDiagnostic{
+				Severity: DiagnosticError,
+				Code:     "asset_stat_failed",
+				Message:  fmt.Sprintf("could not inspect asset %q: %v", asset.Path, err),
 				Path:     asset.Path,
 			})
 		} else {
@@ -341,6 +354,9 @@ func (c *metadataCollector) addAsset(baseDir, reference string) {
 func (c *metadataCollector) resolveLocalReference(baseDir, reference string) (string, bool) {
 	p := localReferencePath(reference)
 	if p == "" {
+		if strings.HasPrefix(normalizeMarkdownDestination(reference), "?") && c.sourcePath != "" {
+			return c.sourcePath, isWithin(c.root, c.sourcePath)
+		}
 		return "", false
 	}
 	var full string

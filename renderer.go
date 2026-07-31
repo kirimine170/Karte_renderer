@@ -74,6 +74,8 @@ const fallbackLayout = `<!doctype html>
 var defaultRenderer = NewRenderer(OSFileSystem{})
 var fmRe = regexp.MustCompile(`(?s)\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\z)`)
 var importRe = regexp.MustCompile(`(?m)^@import\(([^)]*)\)[ \t]*\r?$`)
+var katexDisplayRe = regexp.MustCompile(`(?s)\$\$\$(.+?)\$\$\$`)
+var katexInlineRe = regexp.MustCompile(`\$([^$\n]+?)\$`)
 
 // RenderMarkdown renders a Markdown file below root, returning HTML and front matter.
 func RenderMarkdown(root string, path string) (string, FrontMatter, error) {
@@ -569,12 +571,12 @@ func processKaTeX(s string) string {
 	}
 	s = protect(regexp.MustCompile(`(?s)<pre[^>]*>.*?</pre>`), s)
 	s = protect(regexp.MustCompile(`(?s)<code[^>]*>.*?</code>`), s)
-	s = regexp.MustCompile(`(?s)\$\$\$(.+?)\$\$\$`).ReplaceAllStringFunc(s, func(m string) string {
+	s = katexDisplayRe.ReplaceAllStringFunc(s, func(m string) string {
 		expr := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(m, "$$$"), "$$$"))
 		expr = html.UnescapeString(expr)
 		return `<div class="katex-display" data-katex="` + html.EscapeString(expr) + `">` + html.EscapeString(expr) + `</div>`
 	})
-	s = regexp.MustCompile(`\$([^$\n]+?)\$`).ReplaceAllStringFunc(s, func(m string) string {
+	s = katexInlineRe.ReplaceAllStringFunc(s, func(m string) string {
 		expr := strings.TrimSuffix(strings.TrimPrefix(m, "$"), "$")
 		expr = html.UnescapeString(expr)
 		return `<span class="katex" data-katex="` + html.EscapeString(expr) + `">` + html.EscapeString(expr) + `</span>`

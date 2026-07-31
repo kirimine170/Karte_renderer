@@ -212,6 +212,7 @@ func (c *metadataCollector) addDependency(kind DependencyKind, path string) {
 func (c *metadataCollector) collectReferences(baseDir, markdown string) {
 	source := []byte(markdown)
 	document := newMarkdown(false).Parser().Parse(text.NewReader(source))
+	mathRanges := mathSourceRanges(source)
 	type referenceOccurrence struct {
 		offset               int
 		sequence             int
@@ -223,6 +224,12 @@ func (c *metadataCollector) collectReferences(baseDir, markdown string) {
 	_ = ast.Walk(document, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
+		}
+		switch node.(type) {
+		case *ast.Image, *ast.Link, *ast.AutoLink:
+			if sourceOffsetInRanges(referenceSourceOffset(node, len(source), len(references)), mathRanges) {
+				return ast.WalkContinue, nil
+			}
 		}
 		sequence := len(references)
 		switch node := node.(type) {
@@ -261,6 +268,38 @@ func (c *metadataCollector) collectReferences(baseDir, markdown string) {
 			c.addLink(baseDir, reference.target, reference.classificationTarget)
 		}
 	}
+}
+
+type sourceRange struct {
+	start int
+	end   int
+}
+
+func mathSourceRanges(source []byte) []sourceRange {
+	displayMatches := katexDisplayRe.FindAllIndex(source, -1)
+	ranges := make([]sourceRange, 0, len(displayMatches))
+	for _, match := range displayMatches {
+		ranges = append(ranges, sourceRange{start: match[0], end: match[1]})
+	}
+	for _, match := range katexInlineRe.FindAllIndex(source, -1) {
+		if !sourceOffsetInRanges(match[0], ranges) {
+			ranges = append(ranges, sourceRange{start: match[0], end: match[1]})
+		}
+	}
+	sort.Slice(ranges, func(i, j int) bool { return ranges[i].start < ranges[j].start })
+	return ranges
+}
+
+func sourceOffsetInRanges(offset int, ranges []sourceRange) bool {
+	for _, sourceRange := range ranges {
+		if offset < sourceRange.start {
+			return false
+		}
+		if offset < sourceRange.end {
+			return true
+		}
+	}
+	return false
 }
 
 func referenceSourceOffset(node ast.Node, sourceLength, sequence int) int {

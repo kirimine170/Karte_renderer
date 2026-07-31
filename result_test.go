@@ -195,6 +195,29 @@ func TestRenderResultPreservesReferenceSourceOrderAcrossFootnotes(t *testing.T) 
 	}
 }
 
+func TestRenderResultExcludesReferencesInsideMath(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "real.png"), "real")
+	result, err := RenderStringResult(root, `$![inline](inline.png)$
+
+$$$
+![display](display.png)
+[link](inside.md)
+$$$
+
+![real](real.png)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantAssets := []RenderAsset{{Reference: "real.png", Path: "real.png", Status: AssetAvailable}}
+	if !reflect.DeepEqual(result.Metadata.Assets, wantAssets) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, wantAssets)
+	}
+	if len(result.Metadata.Links) != 0 || len(result.Metadata.Diagnostics) != 0 {
+		t.Fatalf("unexpected metadata: links=%#v diagnostics=%#v", result.Metadata.Links, result.Metadata.Diagnostics)
+	}
+}
+
 func TestRenderResultDoesNotTreatEmptyAssetPathsAsEscapes(t *testing.T) {
 	result, err := RenderStringResult(t.TempDir(), "![](#icon)\n\n![](?v=1)\n\n![]()")
 	if err != nil {

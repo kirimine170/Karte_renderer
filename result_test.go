@@ -156,6 +156,31 @@ func TestRenderResultDoesNotExposeLinkPathThroughEscapingSymlink(t *testing.T) {
 	}
 }
 
+func TestRenderResultChecksSymlinksThroughOSFileSystemWrapper(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	writeFile(t, filepath.Join(outside, "secret.png"), "secret")
+	if err := os.Symlink(filepath.Join(outside, "secret.png"), filepath.Join(root, "image.png")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	renderer := NewRenderer(osFileSystemWrapper{OSFileSystem: OSFileSystem{}})
+	result, err := renderer.RenderStringResultWithOptions(root, `![secret](image.png)`, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []RenderAsset{{Reference: "image.png", Path: "image.png", Status: AssetOutsideRoot}}
+	if !reflect.DeepEqual(result.Metadata.Assets, want) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, want)
+	}
+	if len(result.Metadata.Diagnostics) != 1 || result.Metadata.Diagnostics[0].Code != "asset_outside_root" {
+		t.Fatalf("unexpected diagnostics: %#v", result.Metadata.Diagnostics)
+	}
+}
+
+type osFileSystemWrapper struct {
+	OSFileSystem
+}
+
 func TestRenderResultPreservesReferenceSourceOrderAcrossFootnotes(t *testing.T) {
 	result, err := RenderStringResult(t.TempDir(), "[^x]: [foot](foot.md)\n\n[after](after.md)\n\nFootnote[^x]")
 	if err != nil {

@@ -44,6 +44,10 @@ func (OSFileSystem) ReadFile(name string) ([]byte, error)    { return os.ReadFil
 func (OSFileSystem) Stat(name string) (fs.FileInfo, error)   { return os.Stat(name) }
 func (OSFileSystem) Open(name string) (io.ReadCloser, error) { return os.Open(name) }
 
+// UsesOSPaths reports that paths can be validated with the host OS. The method
+// is promoted by wrappers embedding OSFileSystem, preserving boundary checks.
+func (OSFileSystem) UsesOSPaths() bool { return true }
+
 // Renderer bundles Karte-compatible Markdown, Marp, and PDF rendering helpers.
 type Renderer struct{ fs FileSystem }
 
@@ -684,12 +688,11 @@ func canonicalRoot(root string) (string, error) {
 }
 
 func (r *Renderer) usesOSFileSystem() bool {
-	switch r.fs.(type) {
-	case OSFileSystem, *OSFileSystem:
-		return true
-	default:
-		return false
+	type osPathFileSystem interface {
+		UsesOSPaths() bool
 	}
+	fs, ok := r.fs.(osPathFileSystem)
+	return ok && fs.UsesOSPaths()
 }
 
 func (r *Renderer) normalizeRoot(root string) (string, error) {

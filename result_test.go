@@ -190,4 +190,13 @@ func TestLegacyRenderAPIStillReturnsFrontMatter(t *testing.T) {
 		t.Fatalf("unexpected front matter: %+v", fm)
 	}
 	assertContains(t, html, "<h1>Body</h1>")
+	encoded, err := json.Marshal(fm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"Title":"Legacy"`, `"Marp":false`, `"Theme":""`, `"Owners":null`, `"Data":{"title":"Legacy"}`} {
+		if !strings.Contains(string(encoded), want) {
+			t.Fatalf("legacy FrontMatter JSON does not contain %q: %s", want, encoded)
+		}
+	}
 }

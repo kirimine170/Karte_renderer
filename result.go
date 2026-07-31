@@ -1,6 +1,7 @@
 package renderer
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
@@ -29,6 +30,44 @@ type RenderMetadata struct {
 	Links         []RenderLink       `json:"links,omitempty"`
 	Assets        []RenderAsset      `json:"assets,omitempty"`
 	Diagnostics   []RenderDiagnostic `json:"diagnostics,omitempty"`
+}
+
+// MarshalJSON keeps RenderMetadata's schema independent from FrontMatter's
+// legacy JSON encoding, which existing callers may already persist.
+func (m RenderMetadata) MarshalJSON() ([]byte, error) {
+	type frontMatterJSON struct {
+		Title   string                 `json:"title,omitempty"`
+		Marp    bool                   `json:"marp,omitempty"`
+		Theme   string                 `json:"theme,omitempty"`
+		Layout  string                 `json:"layout,omitempty"`
+		Owners  []string               `json:"owners,omitempty"`
+		Viewers []string               `json:"viewers,omitempty"`
+		Data    map[string]interface{} `json:"data,omitempty"`
+	}
+	type metadataJSON struct {
+		SchemaVersion int                `json:"schemaVersion"`
+		FrontMatter   frontMatterJSON    `json:"frontMatter"`
+		Dependencies  []RenderDependency `json:"dependencies,omitempty"`
+		Links         []RenderLink       `json:"links,omitempty"`
+		Assets        []RenderAsset      `json:"assets,omitempty"`
+		Diagnostics   []RenderDiagnostic `json:"diagnostics,omitempty"`
+	}
+	return json.Marshal(metadataJSON{
+		SchemaVersion: m.SchemaVersion,
+		FrontMatter: frontMatterJSON{
+			Title:   m.FrontMatter.Title,
+			Marp:    m.FrontMatter.Marp,
+			Theme:   m.FrontMatter.Theme,
+			Layout:  m.FrontMatter.Layout,
+			Owners:  m.FrontMatter.Owners,
+			Viewers: m.FrontMatter.Viewers,
+			Data:    m.FrontMatter.Data,
+		},
+		Dependencies: m.Dependencies,
+		Links:        m.Links,
+		Assets:       m.Assets,
+		Diagnostics:  m.Diagnostics,
+	})
 }
 
 // DependencyKind identifies how a file contributed to the rendered document.

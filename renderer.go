@@ -21,13 +21,13 @@ import (
 
 // FrontMatter contains YAML metadata found at the top of a Markdown document.
 type FrontMatter struct {
-	Title   string                 `yaml:"title" json:"title,omitempty"`
-	Marp    bool                   `yaml:"marp" json:"marp,omitempty"`
-	Theme   string                 `yaml:"theme" json:"theme,omitempty"`
-	Layout  string                 `yaml:"layout" json:"layout,omitempty"`
-	Owners  []string               `yaml:"owners" json:"owners,omitempty"`
-	Viewers []string               `yaml:"viewers" json:"viewers,omitempty"`
-	Data    map[string]interface{} `yaml:",inline" json:"data,omitempty"`
+	Title   string                 `yaml:"title"`
+	Marp    bool                   `yaml:"marp"`
+	Theme   string                 `yaml:"theme"`
+	Layout  string                 `yaml:"layout"`
+	Owners  []string               `yaml:"owners"`
+	Viewers []string               `yaml:"viewers"`
+	Data    map[string]interface{} `yaml:",inline"`
 }
 
 // FileSystem abstracts file access for renderers and tests.

@@ -33,7 +33,9 @@ The metadata fields have these semantics:
   normalized project-relative `path`; URL query and fragment parts remain in
   `target`.
 - `assets` contains Markdown images in source order and classifies them as
-  `available`, `missing`, `external`, `embedded`, or `outside-root`.
+  `available`, `missing`, `external`, `embedded`, `unresolved`, or
+  `outside-root`. `unresolved` means that a valid reference has no filesystem
+  path, such as an empty, query-only, or fragment-only destination.
 - `diagnostics` contains non-fatal findings. A missing or outside-root asset is
   a warning because the HTML render can still be useful. Fatal parse, import,
   path, and renderer failures continue to be returned as `error`.

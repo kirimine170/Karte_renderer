@@ -1,10 +1,12 @@
 package renderer
 
 import (
+	"bytes"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/yuin/goldmark/ast"
@@ -72,6 +74,7 @@ const (
 	AssetMissing     AssetStatus = "missing"
 	AssetExternal    AssetStatus = "external"
 	AssetEmbedded    AssetStatus = "embedded"
+	AssetUnresolved  AssetStatus = "unresolved"
 	AssetOutsideRoot AssetStatus = "outside-root"
 )
 
@@ -165,24 +168,91 @@ func (c *metadataCollector) addDependency(kind DependencyKind, path string) {
 func (c *metadataCollector) collectReferences(baseDir, markdown string) {
 	source := []byte(markdown)
 	document := newMarkdown(false).Parser().Parse(text.NewReader(source))
+	type referenceOccurrence struct {
+		offset   int
+		sequence int
+		asset    bool
+		target   string
+	}
+	var references []referenceOccurrence
+	autolinkCursors := map[string]int{}
 	_ = ast.Walk(document, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}
+		sequence := len(references)
 		switch node := node.(type) {
 		case *ast.Image:
-			c.addAsset(baseDir, string(node.Destination))
+			target := string(node.Destination)
+			fallback := []byte(target)
+			if target == "" {
+				fallback = []byte("![]()")
+			}
+			references = append(references, referenceOccurrence{offset: nodeSourceOffset(node, source, fallback), sequence: sequence, asset: true, target: target})
 		case *ast.Link:
-			c.addLink(baseDir, string(node.Destination))
+			target := string(node.Destination)
+			references = append(references, referenceOccurrence{offset: nodeSourceOffset(node, source, []byte(target)), sequence: sequence, target: target})
 		case *ast.AutoLink:
 			target := string(node.URL(source))
 			if node.AutoLinkType == ast.AutoLinkEmail && !strings.HasPrefix(strings.ToLower(target), "mailto:") {
 				target = "mailto:" + target
 			}
-			c.addLink(baseDir, target)
+			label := node.Label(source)
+			offset := nextSourceOccurrence(source, label, autolinkCursors[string(label)])
+			if offset >= 0 {
+				autolinkCursors[string(label)] = offset + len(label)
+			} else {
+				offset = len(source) + sequence
+			}
+			references = append(references, referenceOccurrence{offset: offset, sequence: sequence, target: target})
 		}
 		return ast.WalkContinue, nil
 	})
+	sort.SliceStable(references, func(i, j int) bool {
+		if references[i].offset == references[j].offset {
+			return references[i].sequence < references[j].sequence
+		}
+		return references[i].offset < references[j].offset
+	})
+	for _, reference := range references {
+		if reference.asset {
+			c.addAsset(baseDir, reference.target)
+		} else {
+			c.addLink(baseDir, reference.target)
+		}
+	}
+}
+
+func nodeSourceOffset(node ast.Node, source, fallback []byte) int {
+	offset := len(source)
+	_ = ast.Walk(node, func(child ast.Node, entering bool) (ast.WalkStatus, error) {
+		if entering {
+			if textNode, ok := child.(*ast.Text); ok && textNode.Segment.Start < offset {
+				offset = textNode.Segment.Start
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+	if offset < len(source) {
+		return offset
+	}
+	if len(fallback) > 0 {
+		if fallbackOffset := bytes.Index(source, fallback); fallbackOffset >= 0 {
+			return fallbackOffset
+		}
+	}
+	return len(source)
+}
+
+func nextSourceOccurrence(source, value []byte, start int) int {
+	if len(value) == 0 || start >= len(source) {
+		return -1
+	}
+	offset := bytes.Index(source[start:], value)
+	if offset < 0 {
+		return -1
+	}
+	return start + offset
 }
 
 func (c *metadataCollector) addLink(baseDir, target string) {
@@ -210,6 +280,8 @@ func (c *metadataCollector) addAsset(baseDir, reference string) {
 		asset.Status = AssetEmbedded
 	case isExternalReference(reference):
 		asset.Status = AssetExternal
+	case referenceHasNoPath(reference):
+		asset.Status = AssetUnresolved
 	default:
 		full, within := c.resolveLocalReference(baseDir, reference)
 		if !within {
@@ -281,6 +353,11 @@ func (c *metadataCollector) relativePath(path string) string {
 func isExternalReference(reference string) bool {
 	u, err := url.Parse(reference)
 	return err == nil && (u.Scheme != "" || u.Host != "")
+}
+
+func referenceHasNoPath(reference string) bool {
+	u, err := url.Parse(reference)
+	return err == nil && u.Path == ""
 }
 
 // missingPathEscapesRoot resolves the nearest existing ancestor so a missing

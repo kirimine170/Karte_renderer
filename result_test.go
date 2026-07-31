@@ -116,6 +116,38 @@ func TestRenderResultClassifiesMissingAssetBelowEscapingSymlink(t *testing.T) {
 	}
 }
 
+func TestRenderResultPreservesReferenceSourceOrderAcrossFootnotes(t *testing.T) {
+	result, err := RenderStringResult(t.TempDir(), "[^x]: [foot](foot.md)\n\n[after](after.md)\n\nFootnote[^x]")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []RenderLink{
+		{Kind: LinkInternal, Target: "foot.md", Path: "foot.md"},
+		{Kind: LinkInternal, Target: "after.md", Path: "after.md"},
+	}
+	if !reflect.DeepEqual(result.Metadata.Links, want) {
+		t.Fatalf("links = %#v, want %#v", result.Metadata.Links, want)
+	}
+}
+
+func TestRenderResultDoesNotTreatEmptyAssetPathsAsEscapes(t *testing.T) {
+	result, err := RenderStringResult(t.TempDir(), "![](#icon)\n\n![](?v=1)\n\n![]()")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []RenderAsset{
+		{Reference: "#icon", Status: AssetUnresolved},
+		{Reference: "?v=1", Status: AssetUnresolved},
+		{Reference: "", Status: AssetUnresolved},
+	}
+	if !reflect.DeepEqual(result.Metadata.Assets, want) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, want)
+	}
+	if len(result.Metadata.Diagnostics) != 0 {
+		t.Fatalf("unexpected diagnostics: %#v", result.Metadata.Diagnostics)
+	}
+}
+
 func TestLegacyRenderAPIStillReturnsFrontMatter(t *testing.T) {
 	html, fm, err := RenderString(t.TempDir(), "---\ntitle: Legacy\n---\n# Body")
 	if err != nil {

@@ -322,7 +322,17 @@ func codeSourceRanges(document ast.Node) []sourceRange {
 					ranges = append(ranges, sourceRange{start: segment.Start, end: segment.Stop})
 				}
 			}
-		case *ast.CodeBlock, *ast.FencedCodeBlock:
+		case *ast.CodeBlock:
+			lines := node.Lines()
+			for i := 0; i < lines.Len(); i++ {
+				segment := lines.At(i)
+				ranges = append(ranges, sourceRange{start: segment.Start, end: segment.Stop})
+			}
+		case *ast.FencedCodeBlock:
+			if node.Info != nil {
+				segment := node.Info.Segment
+				ranges = append(ranges, sourceRange{start: segment.Start, end: segment.Stop})
+			}
 			lines := node.Lines()
 			for i := 0; i < lines.Len(); i++ {
 				segment := lines.At(i)

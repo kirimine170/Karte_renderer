@@ -224,6 +224,7 @@ func TestRenderResultIgnoresCodeDollarsWhenFindingMath(t *testing.T) {
 	cases := []string{
 		"`$` ![x](x.png) $",
 		"```text\n$\n```\n\n![x](x.png) $",
+		"```$$$\ncode\n```\n\n![x](x.png)\n\n$$$",
 		"<code>$</code> ![x](x.png) $",
 	}
 	for _, markdown := range cases {

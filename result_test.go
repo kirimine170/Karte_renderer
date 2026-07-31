@@ -239,6 +239,33 @@ func TestRenderResultIgnoresCodeDollarsWhenFindingMath(t *testing.T) {
 	}
 }
 
+func TestRenderResultUsesMarpSlideReferenceBoundaries(t *testing.T) {
+	result, err := RenderStringResult(t.TempDir(), `---
+marp: true
+---
+[unresolved][id]
+
+---
+
+[id]: cross-slide.md
+
+---
+
+[resolved][local]
+
+[local]: same-slide.md`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []RenderLink{{Kind: LinkInternal, Target: "same-slide.md", Path: "same-slide.md"}}
+	if !reflect.DeepEqual(result.Metadata.Links, want) {
+		t.Fatalf("links = %#v, want %#v", result.Metadata.Links, want)
+	}
+	if strings.Contains(result.HTML, "cross-slide.md") {
+		t.Fatalf("cross-slide reference unexpectedly rendered: %s", result.HTML)
+	}
+}
+
 func TestRenderResultDoesNotTreatEmptyAssetPathsAsEscapes(t *testing.T) {
 	result, err := RenderStringResult(t.TempDir(), "![](#icon)\n\n![](?v=1)\n\n![]()")
 	if err != nil {

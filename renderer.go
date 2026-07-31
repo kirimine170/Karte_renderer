@@ -186,7 +186,13 @@ func (r *Renderer) renderResult(root, baseDir, markdown string, hardwrap bool, c
 		return result, err
 	}
 	if collector != nil {
-		collector.collectReferences(baseDir, body)
+		if fm.Marp {
+			for _, slide := range ParseSlides(body) {
+				collector.collectReferences(baseDir, stripSlideDirectives(slide))
+			}
+		} else {
+			collector.collectReferences(baseDir, body)
+		}
 	}
 	var content string
 	if fm.Marp {

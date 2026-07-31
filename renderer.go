@@ -69,7 +69,7 @@ const fallbackLayout = `<!doctype html>
 
 var defaultRenderer = NewRenderer(OSFileSystem{})
 var fmRe = regexp.MustCompile(`(?s)\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\z)`)
-var importRe = regexp.MustCompile(`(?m)^@import\(([^)]*)\)[ \t]*$`)
+var importRe = regexp.MustCompile(`(?m)^@import\(([^)]*)\)[ \t]*\r?$`)
 
 // RenderMarkdown renders a Markdown file below root, returning HTML and front matter.
 func RenderMarkdown(root string, path string) (string, FrontMatter, error) {

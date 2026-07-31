@@ -424,7 +424,7 @@ func fileURL(path string) string {
 }
 
 func fileURLForOS(path, goos string) string {
-	urlPath := filepath.ToSlash(path)
+	urlPath := path
 	if goos == "windows" {
 		urlPath = strings.ReplaceAll(path, `\`, "/")
 		if strings.HasPrefix(urlPath, "//") {

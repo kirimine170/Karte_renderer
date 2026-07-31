@@ -31,7 +31,8 @@ The metadata fields have these semantics:
   operating systems.
 - `links` contains Markdown links in source order. Internal targets include a
   normalized project-relative `path`; URL query and fragment parts remain in
-  `target`.
+  `target`. `target` preserves the source spelling while link classification
+  uses the CommonMark-normalized destination.
 - `assets` contains Markdown images in source order and classifies them as
   `available`, `missing`, `external`, `embedded`, `unresolved`, or
   `outside-root`. `unresolved` means that a valid reference has no filesystem

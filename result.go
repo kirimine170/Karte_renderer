@@ -260,12 +260,13 @@ func referenceSourceOffset(node ast.Node, sourceLength, sequence int) int {
 
 func (c *metadataCollector) addLink(baseDir, target string) {
 	link := RenderLink{Target: target}
+	normalizedTarget := normalizeMarkdownDestination(target)
 	switch {
-	case strings.HasPrefix(target, "#"):
+	case strings.HasPrefix(normalizedTarget, "#"):
 		link.Kind = LinkFragment
-	case strings.HasPrefix(strings.ToLower(target), "mailto:"):
+	case strings.HasPrefix(strings.ToLower(normalizedTarget), "mailto:"):
 		link.Kind = LinkEmail
-	case isExternalReference(target):
+	case isExternalReference(normalizedTarget):
 		link.Kind = LinkExternal
 	default:
 		link.Kind = LinkInternal
@@ -278,10 +279,11 @@ func (c *metadataCollector) addLink(baseDir, target string) {
 
 func (c *metadataCollector) addAsset(baseDir, reference string) {
 	asset := RenderAsset{Reference: reference}
+	normalizedReference := normalizeMarkdownDestination(reference)
 	switch {
-	case strings.HasPrefix(strings.ToLower(reference), "data:"):
+	case strings.HasPrefix(strings.ToLower(normalizedReference), "data:"):
 		asset.Status = AssetEmbedded
-	case isExternalReference(reference):
+	case isExternalReference(normalizedReference):
 		asset.Status = AssetExternal
 	case referenceHasNoPath(reference):
 		asset.Status = AssetUnresolved

@@ -221,6 +221,33 @@ func TestRenderResultNormalizesCommonMarkEscapesForLocalAssets(t *testing.T) {
 	}
 }
 
+func TestRenderResultNormalizesCommonMarkEntitiesForLinkKinds(t *testing.T) {
+	result, err := RenderStringResult(t.TempDir(), `[fragment](&#35;section)
+
+[email](mailto&#58;a@example.com)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []RenderLink{
+		{Kind: LinkFragment, Target: "&#35;section"},
+		{Kind: LinkEmail, Target: "mailto&#58;a@example.com"},
+	}
+	if !reflect.DeepEqual(result.Metadata.Links, want) {
+		t.Fatalf("links = %#v, want %#v", result.Metadata.Links, want)
+	}
+}
+
+func TestRenderResultNormalizesCommonMarkEntitiesForDataAssets(t *testing.T) {
+	result, err := RenderStringResult(t.TempDir(), `![embedded](data&#58;image/png;base64,AAAA)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []RenderAsset{{Reference: "data&#58;image/png;base64,AAAA", Status: AssetEmbedded}}
+	if !reflect.DeepEqual(result.Metadata.Assets, want) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, want)
+	}
+}
+
 func TestLegacyRenderAPIStillReturnsFrontMatter(t *testing.T) {
 	html, fm, err := RenderString(t.TempDir(), "---\ntitle: Legacy\n---\n# Body")
 	if err != nil {

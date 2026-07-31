@@ -95,6 +95,20 @@ func TestMarkdownImport(t *testing.T) {
 	assertContains(t, html, "<p>Text</p>")
 }
 
+func TestImportDirectiveWithCRLF(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "part.md"), "## Imported\r\n\r\nText\r\n")
+	html, _, err := RenderString(root, "# Document\r\n\r\n@import(type=\"md\" path=\"part.md\")\r\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, html, "<h2>Imported</h2>")
+	assertContains(t, html, "<p>Text</p>")
+	if strings.Contains(html, "@import(") {
+		t.Fatalf("renderer left a CRLF import unresolved: %s", html)
+	}
+}
+
 func TestLayoutFallbackOrder(t *testing.T) {
 	root := t.TempDir()
 	html, _, err := RenderString(root, "# Fallback")

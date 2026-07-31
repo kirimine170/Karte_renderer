@@ -230,6 +230,19 @@ func TestRenderResultNormalizesMathDelimiters(t *testing.T) {
 	}
 }
 
+func TestRenderResultPreservesEntitiesInsideRawHTMLWhenFindingMath(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "x.png"), "x")
+	result, err := RenderStringResult(root, `<span title="&#36;">x</span> ![x](x.png) $`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []RenderAsset{{Reference: "x.png", Path: "x.png", Status: AssetAvailable}}
+	if !reflect.DeepEqual(result.Metadata.Assets, want) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, want)
+	}
+}
+
 func TestRenderResultIgnoresCodeDollarsWhenFindingMath(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "x.png"), "x")

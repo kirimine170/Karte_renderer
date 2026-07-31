@@ -294,7 +294,9 @@ func mathSourceRanges(source []byte, document ast.Node) []sourceRange {
 		}
 	}
 
-	normalized := normalizeMathSource(masked)
+	rawHTMLRanges := rawHTMLSourceRanges(document)
+	sort.Slice(rawHTMLRanges, func(i, j int) bool { return rawHTMLRanges[i].start < rawHTMLRanges[j].start })
+	normalized := normalizeMathSource(masked, rawHTMLRanges)
 	displayMatches := katexDisplayRe.FindAllIndex(normalized.value, -1)
 	ranges := make([]sourceRange, 0, len(displayMatches))
 	for _, match := range displayMatches {
@@ -316,7 +318,7 @@ type normalizedSource struct {
 	ends   []int
 }
 
-func normalizeMathSource(source []byte) normalizedSource {
+func normalizeMathSource(source []byte, rawHTMLRanges []sourceRange) normalizedSource {
 	var normalized normalizedSource
 	appendValue := func(value []byte, start, end int) {
 		normalized.value = append(normalized.value, value...)
@@ -326,7 +328,8 @@ func normalizeMathSource(source []byte) normalizedSource {
 		}
 	}
 	for i := 0; i < len(source); {
-		if source[i] == '&' {
+		inRawHTML := sourceOffsetInRanges(i, rawHTMLRanges)
+		if !inRawHTML && source[i] == '&' {
 			end := i + 1
 			for end < len(source) && end-i <= 64 && source[end] != ';' && source[end] != '\n' {
 				end++
@@ -342,7 +345,7 @@ func normalizeMathSource(source []byte) normalizedSource {
 				}
 			}
 		}
-		if source[i] == '\\' && i+1 < len(source) {
+		if !inRawHTML && source[i] == '\\' && i+1 < len(source) {
 			raw := source[i : i+2]
 			decoded := []byte(normalizeMarkdownDestination(string(raw)))
 			if string(decoded) != string(raw) {
@@ -392,6 +395,34 @@ func codeSourceRanges(document ast.Node) []sourceRange {
 			lines := node.Lines()
 			for i := 0; i < lines.Len(); i++ {
 				segment := lines.At(i)
+				ranges = append(ranges, sourceRange{start: segment.Start, end: segment.Stop})
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+	return ranges
+}
+
+func rawHTMLSourceRanges(document ast.Node) []sourceRange {
+	var ranges []sourceRange
+	_ = ast.Walk(document, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		switch node := node.(type) {
+		case *ast.RawHTML:
+			for i := 0; i < node.Segments.Len(); i++ {
+				segment := node.Segments.At(i)
+				ranges = append(ranges, sourceRange{start: segment.Start, end: segment.Stop})
+			}
+		case *ast.HTMLBlock:
+			lines := node.Lines()
+			for i := 0; i < lines.Len(); i++ {
+				segment := lines.At(i)
+				ranges = append(ranges, sourceRange{start: segment.Start, end: segment.Stop})
+			}
+			if node.HasClosure() {
+				segment := node.ClosureLine
 				ranges = append(ranges, sourceRange{start: segment.Start, end: segment.Stop})
 			}
 		}

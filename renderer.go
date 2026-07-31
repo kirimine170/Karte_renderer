@@ -21,13 +21,13 @@ import (
 
 // FrontMatter contains YAML metadata found at the top of a Markdown document.
 type FrontMatter struct {
-	Title   string                 `yaml:"title"`
-	Marp    bool                   `yaml:"marp"`
-	Theme   string                 `yaml:"theme"`
-	Layout  string                 `yaml:"layout"`
-	Owners  []string               `yaml:"owners"`
-	Viewers []string               `yaml:"viewers"`
-	Data    map[string]interface{} `yaml:",inline"`
+	Title   string                 `yaml:"title" json:"title,omitempty"`
+	Marp    bool                   `yaml:"marp" json:"marp,omitempty"`
+	Theme   string                 `yaml:"theme" json:"theme,omitempty"`
+	Layout  string                 `yaml:"layout" json:"layout,omitempty"`
+	Owners  []string               `yaml:"owners" json:"owners,omitempty"`
+	Viewers []string               `yaml:"viewers" json:"viewers,omitempty"`
+	Data    map[string]interface{} `yaml:",inline" json:"data,omitempty"`
 }
 
 // FileSystem abstracts file access for renderers and tests.
@@ -117,6 +117,30 @@ func (r *Renderer) renderMarkdownWithCSS(root, path string, hardwrap bool, css s
 	return r.render(root, filepath.Dir(full), string(b), hardwrap, css)
 }
 
+func (r *Renderer) renderMarkdownResultWithCSS(root, path string, hardwrap bool, css string) (RenderResult, error) {
+	root, err := r.normalizeRoot(root)
+	if err != nil {
+		return RenderResult{}, err
+	}
+	full, err := safeJoin(root, path)
+	if err != nil {
+		return RenderResult{}, err
+	}
+	if r.usesOSFileSystem() {
+		full, err = resolveWithinRoot(root, full)
+		if err != nil {
+			return RenderResult{}, err
+		}
+	}
+	b, err := r.fs.ReadFile(full)
+	if err != nil {
+		return RenderResult{}, err
+	}
+	collector := newMetadataCollector(root, r.fs, r.usesOSFileSystem())
+	collector.addDependency(DependencySource, full)
+	return r.renderResult(root, filepath.Dir(full), string(b), hardwrap, css, collector)
+}
+
 func (r *Renderer) RenderStringWithOptions(root, markdown string, hardwrap bool) (string, FrontMatter, error) {
 	var err error
 	root, err = r.normalizeRoot(root)
@@ -126,14 +150,35 @@ func (r *Renderer) RenderStringWithOptions(root, markdown string, hardwrap bool)
 	return r.render(root, root, markdown, hardwrap, defaultDocumentCSS)
 }
 
-func (r *Renderer) render(root, baseDir, markdown string, hardwrap bool, css string) (string, FrontMatter, error) {
-	body, fm, err := parseFrontMatter(markdown)
+// RenderStringResultWithOptions renders Markdown and returns structured render metadata.
+func (r *Renderer) RenderStringResultWithOptions(root, markdown string, hardwrap bool) (RenderResult, error) {
+	var err error
+	root, err = r.normalizeRoot(root)
 	if err != nil {
-		return "", fm, err
+		return RenderResult{}, err
 	}
-	body, err = r.expandImports(root, baseDir, body, hardwrap)
+	collector := newMetadataCollector(root, r.fs, r.usesOSFileSystem())
+	return r.renderResult(root, root, markdown, hardwrap, defaultDocumentCSS, collector)
+}
+
+func (r *Renderer) render(root, baseDir, markdown string, hardwrap bool, css string) (string, FrontMatter, error) {
+	result, err := r.renderResult(root, baseDir, markdown, hardwrap, css, nil)
+	return result.HTML, result.Metadata.FrontMatter, err
+}
+
+func (r *Renderer) renderResult(root, baseDir, markdown string, hardwrap bool, css string, collector *metadataCollector) (RenderResult, error) {
+	result := RenderResult{Metadata: RenderMetadata{SchemaVersion: RenderMetadataSchemaVersion}}
+	body, fm, err := parseFrontMatter(markdown)
+	result.Metadata.FrontMatter = fm
 	if err != nil {
-		return "", fm, err
+		return result, err
+	}
+	body, err = r.expandImportsWithMetadata(root, baseDir, body, hardwrap, collector)
+	if err != nil {
+		return result, err
+	}
+	if collector != nil {
+		collector.collectReferences(baseDir, body)
 	}
 	var content string
 	if fm.Marp {
@@ -142,11 +187,14 @@ func (r *Renderer) render(root, baseDir, markdown string, hardwrap bool, css str
 		content, err = markdownHTML(body, hardwrap)
 	}
 	if err != nil {
-		return "", fm, err
+		return result, err
 	}
-	layout, err := r.loadLayout(root)
+	layout, layoutPath, err := r.loadLayoutWithPath(root)
 	if err != nil {
-		return "", fm, err
+		return result, err
+	}
+	if collector != nil && layoutPath != "" {
+		collector.addDependency(DependencyLayout, layoutPath)
 	}
 	runtime := katexRuntimeFor(content)
 	hasKaTeXPlaceholder := strings.Contains(layout, "{{KATEX}}")
@@ -157,7 +205,14 @@ func (r *Renderer) render(root, baseDir, markdown string, hardwrap bool, css str
 	if runtime != "" && !hasKaTeXPlaceholder {
 		out = injectKaTeXRuntime(out, runtime)
 	}
-	return out, fm, nil
+	result.HTML = out
+	if collector != nil {
+		result.Metadata.Dependencies = collector.dependencies
+		result.Metadata.Links = collector.links
+		result.Metadata.Assets = collector.assets
+		result.Metadata.Diagnostics = collector.diagnostics
+	}
+	return result, nil
 }
 
 func parseFrontMatter(s string) (string, FrontMatter, error) {
@@ -247,10 +302,14 @@ func markdownHTML(s string, hardwrap bool) (string, error) {
 }
 
 func (r *Renderer) expandImports(root, baseDir, s string, hardwrap bool) (string, error) {
-	return r.expandImportsRecursive(root, baseDir, s, hardwrap, map[string]bool{}, 0)
+	return r.expandImportsWithMetadata(root, baseDir, s, hardwrap, nil)
 }
 
-func (r *Renderer) expandImportsRecursive(root, baseDir, s string, hardwrap bool, stack map[string]bool, depth int) (string, error) {
+func (r *Renderer) expandImportsWithMetadata(root, baseDir, s string, hardwrap bool, collector *metadataCollector) (string, error) {
+	return r.expandImportsRecursive(root, baseDir, s, hardwrap, map[string]bool{}, 0, collector)
+}
+
+func (r *Renderer) expandImportsRecursive(root, baseDir, s string, hardwrap bool, stack map[string]bool, depth int, collector *metadataCollector) (string, error) {
 	if depth > 32 {
 		return "", fmt.Errorf("maximum @import depth exceeded")
 	}
@@ -294,6 +353,9 @@ func (r *Renderer) expandImportsRecursive(root, baseDir, s string, hardwrap bool
 			firstErr = err
 			return ""
 		}
+		if collector != nil {
+			collector.addDependency(dependencyKindForImport(typ), full)
+		}
 		switch typ {
 		case "csv":
 			h, err := csvToHTML(b, attrs)
@@ -311,7 +373,7 @@ func (r *Renderer) expandImportsRecursive(root, baseDir, s string, hardwrap bool
 			return h
 		case "md", "markdown":
 			stack[full] = true
-			nested, err := r.expandImportsRecursive(root, filepath.Dir(full), string(b), hardwrap, stack, depth+1)
+			nested, err := r.expandImportsRecursive(root, filepath.Dir(full), string(b), hardwrap, stack, depth+1, collector)
 			delete(stack, full)
 			if err != nil {
 				firstErr = err
@@ -549,17 +611,22 @@ func findWkhtmltopdf() string {
 }
 
 func (r *Renderer) loadLayout(root string) (string, error) {
+	layout, _, err := r.loadLayoutWithPath(root)
+	return layout, err
+}
+
+func (r *Renderer) loadLayoutWithPath(root string) (string, string, error) {
 	for _, name := range []string{"preview.html", "layout.html"} {
 		p := filepath.Join(root, "themes", "default", name)
 		b, err := r.fs.ReadFile(p)
 		if err == nil {
-			return string(b), nil
+			return string(b), p, nil
 		}
 		if !os.IsNotExist(err) {
-			return "", err
+			return "", "", err
 		}
 	}
-	return fallbackLayout, nil
+	return fallbackLayout, "", nil
 }
 func safeJoin(root, p string) (string, error) {
 	full := p

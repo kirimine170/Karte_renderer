@@ -22,6 +22,7 @@ type PrintoutOptions struct {
 	Footer        string `yaml:"footer"`
 	PageNumbers   *bool  `yaml:"pageNumbers"`
 	ChapterStart  string `yaml:"chapterStart"`
+	ExpectedPages int    `yaml:"expected_pages"`
 }
 
 // UnmarshalYAML accepts both `printout: B5` and the full mapping form.
@@ -48,7 +49,7 @@ func (p *PrintoutOptions) UnmarshalYAML(node *yaml.Node) error {
 func (p PrintoutOptions) empty() bool {
 	return p.Size == "" && p.Orientation == "" && p.Margin == "" &&
 		p.InsideMargin == "" && p.OutsideMargin == "" && p.Header == "" &&
-		p.Footer == "" && p.PageNumbers == nil && p.ChapterStart == ""
+		p.Footer == "" && p.PageNumbers == nil && p.ChapterStart == "" && p.ExpectedPages == 0
 }
 
 var physicalLengthRe = regexp.MustCompile(`^(?:0|(?:\d+(?:\.\d+)?|\.\d+)(?:mm|cm|in|pt|pc))$`)
@@ -118,6 +119,9 @@ func resolvePrintoutOptions(frontMatter PrintoutOptions, explicit PDFOptions) (P
 		resolved.ChapterStart = "recto"
 	default:
 		return PrintoutOptions{}, fmt.Errorf("invalid chapter start %q (use right or any)", resolved.ChapterStart)
+	}
+	if resolved.ExpectedPages < 0 {
+		return PrintoutOptions{}, fmt.Errorf("invalid expected_pages %d (must be zero or greater)", resolved.ExpectedPages)
 	}
 	return resolved, nil
 }

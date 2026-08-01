@@ -81,7 +81,8 @@ func TestComplexKarteFormatRendersGoldenBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != strings.TrimSpace(string(want)) {
+	wantBody := strings.ReplaceAll(strings.TrimSpace(string(want)), "\r\n", "\n")
+	if got != wantBody {
 		t.Fatalf("rendered body changed\n--- got ---\n%s\n--- want ---\n%s", got, want)
 	}
 }

@@ -114,6 +114,12 @@ Common options:
 --pdf-footer TEXT       running page footer
 --pdf-page-numbers      show outside-edge page-number folios (or =false)
 --pdf-chapter-start N   right or any
+--preflight             validate assets, layout, page size/count, fonts, and TeX
+--expected-pages N      require an exact PDF page count and enable preflight
+--preflight-report PATH write the machine-readable preflight JSON report here
+--pdfinfo-binary PATH   explicitly choose Poppler pdfinfo
+--pdffonts-binary PATH  explicitly choose Poppler pdffonts
+--pdftotext-binary PATH explicitly choose Poppler pdftotext
 ```
 
 The environment variables `MARP_BINARY` and `KARTE_PDF_BINARY` are also
@@ -167,6 +173,11 @@ frontMatter, err := renderer.ConvertFile(ctx, "book.md", "build/book.pdf", rende
         PageNumbers:   &pageNumbers,
         ChapterStart:  "right",
     },
+    Preflight: renderer.PreflightOptions{
+        Enabled:       true,
+        ExpectedPages: 48,
+        ReportPath:    "build/book.preflight.json",
+    },
 })
 ```
 
@@ -183,12 +194,78 @@ printout:
   footer: Chapter title
   pageNumbers: true
   chapterStart: right
+  expected_pages: 48
 ```
 
 `printout: B5` is available as a shorthand. Explicit CLI/Go fields override
 only their matching front-matter fields. The renderer emits the settings as a
 late paged-media override, so screen styling is unchanged; mirrored `:left`
 and `:right` rules put the inside margin on the binding edge.
+
+`expected_pages` automatically enables PDF preflight. Preflight runs after the
+PDF is written, keeps the PDF on failure, and writes `<output>.preflight.json`
+unless `--preflight-report` selects another path. It checks local HTML assets,
+visible raw TeX, browser overflow/clipping, page count and B5/A-series size,
+font embedding, and extracted PDF text. The CLI exits non-zero if any check
+fails. Layout checks require Chrome/Chromium; PDF inspection requires Poppler's
+`pdfinfo`, `pdffonts`, and `pdftotext`. `karte-renderer doctor` reports all four
+dependencies.
+
+### Page breaks and keep rules
+
+Use a standalone directive for a deterministic page boundary:
+
+```md
+@pagebreak
+@pagebreak(before)
+@pagebreak(after)
+```
+
+The plain form is an alias for `before`; directives in fenced code blocks stay
+literal. Print CSS also keeps headings with their following block and avoids
+splitting figures, captions, images, tables, code blocks, blockquotes, and
+display equations when the paged-media engine can honor the constraint.
+Trusted HTML/templates may use `.karte-break-before`, `.karte-break-after`,
+`.karte-keep-with-next`, or `.karte-keep-together` directly.
+
+### Deterministic CSV charts
+
+`@chart` generates an inline, responsive SVG during rendering. It does not
+load JavaScript, fonts, or chart services at runtime:
+
+```md
+@chart(type="scatter" path="data/performances.csv" x="attendance" y="profit" series="venue" title="Attendance and profit" xLabel="Attendance" xUnit="people" yLabel="Profit" yUnit="JPY" note="Source: performance log")
+```
+
+The initial chart types are `scatter`, `line`, `bar`, and `histogram`.
+`width`/`height` set the SVG view box and `bins` controls a histogram. A
+`series` column produces a stable legend with monochrome-safe marker shapes and
+dash patterns. CSV paths use the same project-root and symlink safety boundary
+as imports, and invalid or missing numeric values fail the conversion with a
+row/column error.
+
+### Figures, tables, and cross references
+
+Use stable IDs for image figures, annotated Markdown tables, and charts:
+
+```md
+See @ref(overview), @ref(results), and @ref(profit).
+
+@figure(id="overview" src="assets/overview.svg" alt="Overview" caption="System overview" source="Internal model")
+
+@table(id="results" caption="Estimated results" source="Performance log")
+| Item | Value |
+| --- | ---: |
+| A | 10 |
+
+@chart(type="scatter" path="data.csv" x="x" y="y" id="profit" caption="Profit curve" source="Performance log")
+```
+
+Figures and tables have independent document-order numbering. Forward
+references are supported; unknown and duplicate IDs fail the render. Captions,
+optional `source`/`note` lines, and their figure/table are wrapped in one
+semantic `<figure>` so the pagination layer can keep the unit together.
+References written inside inline or fenced code stay literal.
 
 The lower-level `ExportMarp` and `ExportHTMLPDF` functions are available when
 the caller already owns the Markdown/HTML pipeline. The legacy
@@ -251,7 +328,7 @@ go run ./cmd/karte-renderer examples/slides.md output/slides.pptx
 ```
 
 The test suite covers GFM, structured YAML, math/code boundaries, layouts,
-imports, path safety, book printout precedence and validation, Marp invocation,
-PDF-engine invocation, and CLI behavior. The Node tests validate the linked
+imports, path safety, book printout precedence and validation, PDF preflight,
+Marp invocation, PDF-engine invocation, and CLI behavior. The Node tests validate the linked
 karte-format fixture resources and render every fixture formula with the pinned
 KaTeX release.

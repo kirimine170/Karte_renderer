@@ -201,7 +201,11 @@ func (r *Renderer) renderResult(root, baseDir, markdown string, hardwrap bool, c
 	if fm.Marp {
 		content, err = RenderMarp(body)
 	} else {
+		body = expandPageBreakDirectives(body)
 		content, err = markdownHTML(body, hardwrap)
+		if err == nil {
+			content, err = finalizeFigures(content)
+		}
 	}
 	if err != nil {
 		return result, err
@@ -221,6 +225,10 @@ func (r *Renderer) renderResult(root, baseDir, markdown string, hardwrap bool, c
 	out = strings.ReplaceAll(out, "{{CONTENT}}", content)
 	if runtime != "" && !hasKaTeXPlaceholder {
 		out = injectKaTeXRuntime(out, runtime)
+	}
+	if !fm.Marp {
+		out = injectPaginationStyle(out)
+		out = injectFigureStyle(out)
 	}
 	result.HTML = out
 	if collector != nil {
@@ -757,7 +765,14 @@ func (r *Renderer) expandImportsRecursive(root, baseDir, s string, hardwrap bool
 			return ""
 		}
 	})
-	return out, firstErr
+	if firstErr != nil {
+		return out, firstErr
+	}
+	charted, err := r.expandCharts(root, baseDir, out, collector)
+	if err != nil {
+		return "", err
+	}
+	return r.expandFigureDirectives(root, baseDir, charted, collector)
 }
 
 func parseAttrs(s string) map[string]string {

@@ -174,10 +174,10 @@ func buildPrintoutStyle(options PrintoutOptions) string {
 		fmt.Fprintf(&page, "margin:%s;", options.Margin)
 	}
 	if options.Header != "" {
-		fmt.Fprintf(&page, "@top-center{content:%s;}", strconv.Quote(options.Header))
+		fmt.Fprintf(&page, "@top-center{content:%s;}", quoteCSSStringForStyle(options.Header))
 	}
 	if options.Footer != "" {
-		fmt.Fprintf(&page, "@bottom-center{content:%s;}", strconv.Quote(options.Footer))
+		fmt.Fprintf(&page, "@bottom-center{content:%s;}", quoteCSSStringForStyle(options.Footer))
 	}
 	if options.OutsideMargin != "" {
 		fmt.Fprintf(&left, "margin-left:%s;", options.OutsideMargin)
@@ -209,6 +209,12 @@ func buildPrintoutStyle(options PrintoutOptions) string {
 		fmt.Fprintf(&css, "@media print{%s}", print.String())
 	}
 	return css.String()
+}
+
+func quoteCSSStringForStyle(value string) string {
+	// A style element is an HTML raw-text container, so CSS string quoting
+	// alone does not neutralize the literal </style> terminator.
+	return strings.ReplaceAll(strconv.Quote(value), "<", `\3c `)
 }
 
 func setHTMLAttribute(document, name, value string) string {

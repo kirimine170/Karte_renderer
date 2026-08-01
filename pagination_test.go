@@ -28,6 +28,22 @@ func TestPageBreakDirectiveInsideCodeFenceRemainsLiteral(t *testing.T) {
 	}
 }
 
+func TestPageBreakDirectiveInsideRawHTMLLiteralContainerRemainsLiteral(t *testing.T) {
+	for _, tag := range []string{"pre", "code", "textarea", "script", "style"} {
+		t.Run(tag, func(t *testing.T) {
+			source := "<" + tag + ">\n@pagebreak\n</" + tag + ">"
+			rendered, _, err := RenderString(t.TempDir(), source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertContains(t, rendered, "@pagebreak")
+			if strings.Contains(rendered, `role="separator"`) {
+				t.Fatalf("directive inside raw HTML %s must remain literal:\n%s", tag, rendered)
+			}
+		})
+	}
+}
+
 func TestPaginationStyleProvidesKeepAndBreakRules(t *testing.T) {
 	rendered, _, err := RenderString(t.TempDir(), "# Heading\n\n| A |\n| - |\n| 1 |")
 	if err != nil {

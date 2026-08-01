@@ -108,10 +108,7 @@ func (r *Renderer) renderImageFigure(root, baseDir string, attrs map[string]stri
 	if _, err := r.fs.Stat(full); err != nil {
 		return "", fmt.Errorf("read figure asset %s: %w", sourcePath, err)
 	}
-	imageSource := filepath.ToSlash(sourcePath)
-	if filepath.IsAbs(sourcePath) {
-		imageSource = fileURL(full)
-	}
+	imageSource := fileURL(full)
 	alt := attrs["alt"]
 	if alt == "" {
 		alt = attrs["caption"]

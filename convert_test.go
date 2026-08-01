@@ -96,6 +96,25 @@ func TestFileURLNormalizesLocalDeviceWindowsUNCPath(t *testing.T) {
 	}
 }
 
+func TestConvertDocumentPreservesMultilineKatex(t *testing.T) {
+	root := t.TempDir()
+	input := filepath.Join(root, "formula.md")
+	output := filepath.Join(root, "formula.html")
+	writeFile(t, input, "$$$\n\\begin{aligned}\nx &= 1 \\\\\ny &= 2\n\\end{aligned}\n$$$\n")
+
+	if _, err := ConvertFile(context.Background(), input, output, ConvertOptions{Root: root}); err != nil {
+		t.Fatal(err)
+	}
+	rendered, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, string(rendered), `<div class="katex-display" data-katex="\begin{aligned}`)
+	if strings.Contains(string(rendered), `<p><div class="katex-display"`) {
+		t.Fatalf("converted HTML contains an invalid paragraph wrapper:\n%s", rendered)
+	}
+}
+
 func TestConvertDocumentWithNoCSS(t *testing.T) {
 	root := t.TempDir()
 	input := filepath.Join(root, "page.md")

@@ -84,6 +84,16 @@ func TestConvertB5BookPrintoutFixture(t *testing.T) {
 	}
 }
 
+func TestPrintoutRunningTextCannotTerminateStyleElement(t *testing.T) {
+	document := applyPrintoutOptions("<!doctype html><html><head></head><body></body></html>", PrintoutOptions{
+		Header: `Title</style><script>alert(1)</script>`,
+	})
+	if strings.Contains(document, `Title</style><script>`) {
+		t.Fatalf("running text terminated the injected style element: %s", document)
+	}
+	assertContains(t, document, `Title\3c /style>\3c script>alert(1)\3c /script>`)
+}
+
 func TestConvertPrintoutExplicitOptionsOverrideFrontMatter(t *testing.T) {
 	root := t.TempDir()
 	input := filepath.Join(root, "book.md")

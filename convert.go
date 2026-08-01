@@ -1,6 +1,7 @@
 package renderer
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/url"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // ConvertOptions configures file-to-file conversion.
@@ -24,6 +26,9 @@ type ConvertOptions struct {
 	NoCSS bool
 	Marp  MarpOptions
 	PDF   PDFOptions
+	// Preflight validates the rendered HTML and generated PDF. It is also
+	// enabled when front matter declares printout.expected_pages.
+	Preflight PreflightOptions
 }
 
 // MarpOptions configures conversions delegated to the official Marp CLI.
@@ -73,6 +78,9 @@ type DependencyStatus struct {
 func ConvertFile(ctx context.Context, input, output string, opts ConvertOptions) (FrontMatter, error) {
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if opts.Preflight.ExpectedPages < 0 {
+		return FrontMatter{}, fmt.Errorf("invalid expected pages %d (must be zero or greater)", opts.Preflight.ExpectedPages)
 	}
 	inputAbs, err := filepath.Abs(input)
 	if err != nil {
@@ -181,6 +189,45 @@ func ConvertFile(ctx context.Context, input, output string, opts ConvertOptions)
 	pdfOpts.ChapterStart = ""
 	if err := ExportHTMLPDF(ctx, tmpName, outputAbs, pdfOpts); err != nil {
 		return renderedFM, err
+	}
+	preflight := opts.Preflight
+	if preflight.ExpectedPages == 0 {
+		preflight.ExpectedPages = printout.ExpectedPages
+	}
+	if preflight.ExpectedPageSize == "" {
+		preflight.ExpectedPageSize = printout.Size
+		if preflight.ExpectedPageSize == "" {
+			preflight.ExpectedPageSize = "A4"
+		}
+	}
+	if preflight.ExpectedOrientation == "" {
+		preflight.ExpectedOrientation = printout.Orientation
+		if preflight.ExpectedOrientation == "" {
+			preflight.ExpectedOrientation = "portrait"
+		}
+	}
+	if preflight.ChromiumBinary == "" {
+		pdfBinary := opts.PDF.Binary
+		if pdfBinary == "" {
+			pdfBinary = os.Getenv("KARTE_PDF_BINARY")
+		}
+		engine := strings.ToLower(strings.TrimSpace(opts.PDF.Engine))
+		if pdfBinary != "" && engine != "wkhtmltopdf" && !strings.Contains(strings.ToLower(filepath.Base(pdfBinary)), "wkhtmltopdf") {
+			preflight.ChromiumBinary = pdfBinary
+		}
+	}
+	if preflightRequested(preflight) {
+		if preflight.ReportPath == "" {
+			preflight.ReportPath = outputAbs + ".preflight.json"
+		}
+		reportPath, err := validatePreflightReportPath(preflight.ReportPath, inputAbs, outputAbs)
+		if err != nil {
+			return renderedFM, err
+		}
+		preflight.ReportPath = reportPath
+		if _, err := runDocumentPreflight(ctx, tmpName, outputAbs, preflight); err != nil {
+			return renderedFM, err
+		}
 	}
 	return renderedFM, nil
 }
@@ -370,14 +417,93 @@ func ExportHTMLPDF(ctx context.Context, htmlFile, outputPDF string, opts PDFOpti
 		args = append(args, htmlAbs, outputAbs)
 	}
 	defer cleanup()
-	cmd := exec.CommandContext(ctx, binary, args...)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("%s PDF conversion failed: %w: %s", engine, err, strings.TrimSpace(string(out)))
+	if engine == "chromium" {
+		if err := runChromiumPDF(ctx, binary, args, outputAbs); err != nil {
+			return err
+		}
+	} else {
+		cmd := exec.CommandContext(ctx, binary, args...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("%s PDF conversion failed: %w: %s", engine, err, strings.TrimSpace(string(out)))
+		}
 	}
 	if _, err := os.Stat(outputAbs); err != nil {
 		return fmt.Errorf("PDF engine did not create output %s: %w", outputAbs, err)
 	}
 	return nil
+}
+
+// runChromiumPDF accepts a completed PDF even when a Chromium release keeps
+// its headless browser process alive after --print-to-pdf has finished. The
+// PDF trailer is the completion boundary; the browser is only terminated after
+// that boundary has remained present across two polls.
+func runChromiumPDF(ctx context.Context, binary string, args []string, outputPDF string) error {
+	if err := os.Remove(outputPDF); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("replace PDF output: %w", err)
+	}
+	cmd := exec.CommandContext(ctx, binary, args...)
+	isolateProcessGroup(cmd)
+	cmd.WaitDelay = 2 * time.Second
+	var output bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("chromium PDF conversion failed: %w", err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	completePolls := 0
+	for {
+		select {
+		case err := <-done:
+			if err != nil {
+				killProcessTree(cmd)
+				return fmt.Errorf("chromium PDF conversion failed: %w: %s", err, strings.TrimSpace(output.String()))
+			}
+			return nil
+		case <-ticker.C:
+			if completedPDF(outputPDF) {
+				completePolls++
+			} else {
+				completePolls = 0
+			}
+			if completePolls >= 2 {
+				killProcessTree(cmd)
+				<-done
+				return nil
+			}
+		case <-ctx.Done():
+			killProcessTree(cmd)
+			<-done
+			return fmt.Errorf("chromium PDF conversion failed: %w: %s", ctx.Err(), strings.TrimSpace(output.String()))
+		}
+	}
+}
+
+func completedPDF(path string) bool {
+	file, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || info.Size() < 8 {
+		return false
+	}
+	readSize := int64(2048)
+	if info.Size() < readSize {
+		readSize = info.Size()
+	}
+	if _, err := file.Seek(-readSize, 2); err != nil {
+		return false
+	}
+	tail := make([]byte, readSize)
+	if _, err := file.Read(tail); err != nil {
+		return false
+	}
+	return bytes.Contains(tail, []byte("%%EOF"))
 }
 
 func prepareHTMLPDFInput(htmlFile string, opts PDFOptions) (string, func(), error) {
@@ -416,10 +542,16 @@ func Diagnose(searchFrom string) []DependencyStatus {
 	marp := findMarpBinary(searchFrom)
 	chromium := findChromium()
 	wkhtml := findWkhtmltopdf()
+	pdfinfo, _ := exec.LookPath("pdfinfo")
+	pdffonts, _ := exec.LookPath("pdffonts")
+	pdftotext, _ := exec.LookPath("pdftotext")
 	return []DependencyStatus{
 		{Name: "marp", Path: marp, Found: marp != "", RequiredFor: "Marp HTML/PDF/PPTX"},
 		{Name: "chromium", Path: chromium, Found: chromium != "", RequiredFor: "PDF/PPTX rendering"},
 		{Name: "wkhtmltopdf", Path: wkhtml, Found: wkhtml != "", RequiredFor: "optional document PDF fallback"},
+		{Name: "pdfinfo", Path: pdfinfo, Found: pdfinfo != "", RequiredFor: "PDF preflight page count and size"},
+		{Name: "pdffonts", Path: pdffonts, Found: pdffonts != "", RequiredFor: "PDF preflight font embedding"},
+		{Name: "pdftotext", Path: pdftotext, Found: pdftotext != "", RequiredFor: "PDF preflight raw TeX checks"},
 	}
 }
 

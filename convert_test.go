@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestConvertDocumentToHTML(t *testing.T) {
@@ -230,6 +231,41 @@ exit 2
 	b, err := os.ReadFile(output)
 	if err != nil || !strings.HasPrefix(string(b), "%PDF-") {
 		t.Fatalf("unexpected PDF output: %q, %v", b, err)
+	}
+}
+
+func TestExportHTMLPDFStopsChromiumAfterCompletedTrailer(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell helper is Unix-only")
+	}
+	root := t.TempDir()
+	htmlFile := filepath.Join(root, "page.html")
+	output := filepath.Join(root, "page.pdf")
+	writeFile(t, htmlFile, "<!doctype html><title>test</title>")
+	binary := filepath.Join(root, "hanging-chromium")
+	writeExecutable(t, binary, `#!/bin/sh
+for arg in "$@"; do
+  case "$arg" in
+    --print-to-pdf=*)
+      output=${arg#*=}
+      printf '%%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%%%EOF\n' > "$output"
+      exec sleep 60
+      ;;
+  esac
+done
+exit 2
+`)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	started := time.Now()
+	if err := ExportHTMLPDF(ctx, htmlFile, output, PDFOptions{Engine: "chromium", Binary: binary}); err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(started) >= 2*time.Second {
+		t.Fatalf("completed Chromium PDF did not return promptly")
+	}
+	if !completedPDF(output) {
+		t.Fatal("completed PDF trailer was not retained")
 	}
 }
 

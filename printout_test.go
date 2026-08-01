@@ -25,13 +25,14 @@ printout:
   outsideMargin: 14mm
   pageNumbers: true
   chapterStart: right
+  expected_pages: 48
 ---
 # Book`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if mapped.Printout.Size != "B5" || mapped.Printout.InsideMargin != "20mm" ||
-		mapped.Printout.PageNumbers == nil || !*mapped.Printout.PageNumbers {
+		mapped.Printout.PageNumbers == nil || !*mapped.Printout.PageNumbers || mapped.Printout.ExpectedPages != 48 {
 		t.Fatalf("mapped printout was not preserved: %+v", mapped.Printout)
 	}
 }
@@ -114,6 +115,7 @@ func TestConvertRejectsUnsafePrintoutValues(t *testing.T) {
 		{"orientation", "orientation: upside-down", "invalid printout orientation"},
 		{"margin", `margin: "12mm; color: red"`, "invalid printout margin length"},
 		{"chapter", "chapterStart: tomorrow", "invalid chapter start"},
+		{"expected pages", "expected_pages: -1", "invalid expected_pages"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			root := t.TempDir()

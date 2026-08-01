@@ -79,6 +79,12 @@ func run(args []string) error {
 	fs.StringVar(&opts.PDF.Footer, "pdf-footer", "", "PDF running footer text")
 	fs.Var(&optionalBool{target: &opts.PDF.PageNumbers}, "pdf-page-numbers", "show PDF page-number folios (may be set to false)")
 	fs.StringVar(&opts.PDF.ChapterStart, "pdf-chapter-start", "", "chapter page side: right or any")
+	fs.BoolVar(&opts.Preflight.Enabled, "preflight", false, "validate PDF pages, size, fonts, assets, TeX, and overflow")
+	fs.IntVar(&opts.Preflight.ExpectedPages, "expected-pages", 0, "required PDF page count (also enables preflight)")
+	fs.StringVar(&opts.Preflight.ReportPath, "preflight-report", "", "write preflight JSON report to this path")
+	fs.StringVar(&opts.Preflight.PDFInfoBinary, "pdfinfo-binary", "", "path to Poppler pdfinfo")
+	fs.StringVar(&opts.Preflight.PDFFontsBinary, "pdffonts-binary", "", "path to Poppler pdffonts")
+	fs.StringVar(&opts.Preflight.PDFToTextBinary, "pdftotext-binary", "", "path to Poppler pdftotext")
 	fs.Usage = func() {
 		fmt.Fprintln(fs.Output(), "Usage: karte-renderer [convert] [options] INPUT.md OUTPUT.{html,pdf,pptx}")
 		fmt.Fprintln(fs.Output(), "       karte-renderer doctor")

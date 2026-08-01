@@ -112,6 +112,12 @@ Common options:
 --pdf-footer TEXT       running page footer
 --pdf-page-numbers      show outside-edge page-number folios (or =false)
 --pdf-chapter-start N   right or any
+--preflight             validate assets, layout, page size/count, fonts, and TeX
+--expected-pages N      require an exact PDF page count and enable preflight
+--preflight-report PATH write the machine-readable preflight JSON report here
+--pdfinfo-binary PATH   explicitly choose Poppler pdfinfo
+--pdffonts-binary PATH  explicitly choose Poppler pdffonts
+--pdftotext-binary PATH explicitly choose Poppler pdftotext
 ```
 
 The environment variables `MARP_BINARY` and `KARTE_PDF_BINARY` are also
@@ -153,6 +159,11 @@ frontMatter, err := renderer.ConvertFile(ctx, "book.md", "build/book.pdf", rende
         PageNumbers:   &pageNumbers,
         ChapterStart:  "right",
     },
+    Preflight: renderer.PreflightOptions{
+        Enabled:       true,
+        ExpectedPages: 48,
+        ReportPath:    "build/book.preflight.json",
+    },
 })
 ```
 
@@ -169,12 +180,22 @@ printout:
   footer: Chapter title
   pageNumbers: true
   chapterStart: right
+  expected_pages: 48
 ```
 
 `printout: B5` is available as a shorthand. Explicit CLI/Go fields override
 only their matching front-matter fields. The renderer emits the settings as a
 late paged-media override, so screen styling is unchanged; mirrored `:left`
 and `:right` rules put the inside margin on the binding edge.
+
+`expected_pages` automatically enables PDF preflight. Preflight runs after the
+PDF is written, keeps the PDF on failure, and writes `<output>.preflight.json`
+unless `--preflight-report` selects another path. It checks local HTML assets,
+visible raw TeX, browser overflow/clipping, page count and B5/A-series size,
+font embedding, and extracted PDF text. The CLI exits non-zero if any check
+fails. Layout checks require Chrome/Chromium; PDF inspection requires Poppler's
+`pdfinfo`, `pdffonts`, and `pdftotext`. `karte-renderer doctor` reports all four
+dependencies.
 
 ### Page breaks and keep rules
 
@@ -293,7 +314,7 @@ go run ./cmd/karte-renderer examples/slides.md output/slides.pptx
 ```
 
 The test suite covers GFM, structured YAML, math/code boundaries, layouts,
-imports, path safety, book printout precedence and validation, Marp invocation,
-PDF-engine invocation, and CLI behavior. The Node tests validate the linked
+imports, path safety, book printout precedence and validation, PDF preflight,
+Marp invocation, PDF-engine invocation, and CLI behavior. The Node tests validate the linked
 karte-format fixture resources and render every fixture formula with the pinned
 KaTeX release.

@@ -115,6 +115,31 @@ func TestFigureDirectiveRejectsSymlinkEscape(t *testing.T) {
 	}
 }
 
+func TestImportedFigureUsesResolvedPartialAssetURL(t *testing.T) {
+	root := t.TempDir()
+	partialDir := filepath.Join(root, "partials")
+	asset := filepath.Join(partialDir, "assets", "figure.svg")
+	if err := os.MkdirAll(filepath.Dir(asset), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, asset, `<svg xmlns="http://www.w3.org/2000/svg"/>`)
+	writeFile(t, filepath.Join(partialDir, "chapter.md"), `@figure(id="nested" src="assets/figure.svg" caption="Nested")`)
+	writeFile(t, filepath.Join(root, "book.md"), `@import(type="md" path="partials/chapter.md")`)
+
+	rendered, _, err := RenderMarkdown(root, "book.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolvedAsset, err := filepath.EvalSymlinks(asset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, rendered, `src="`+fileURL(resolvedAsset)+`"`)
+	if strings.Contains(rendered, `src="assets/figure.svg"`) {
+		t.Fatalf("imported figure URL was resolved against the top-level document:\n%s", rendered)
+	}
+}
+
 func TestFigureCaptionEscapesMetadata(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "image.svg"), `<svg xmlns="http://www.w3.org/2000/svg"/>`)

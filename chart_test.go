@@ -109,7 +109,7 @@ func TestPrepareMarpInputExpandsChartWithoutImports(t *testing.T) {
 	writeFile(t, filepath.Join(root, "data.csv"), chartCSVFixture)
 	source := "---\nmarp: true\n---\n@chart(type=\"scatter\" path=\"data.csv\" x=\"attendance\" y=\"profit\")\n"
 	writeFile(t, input, source)
-	prepared, cleanup, err := prepareMarpInput(root, input, source, false)
+	prepared, cleanup, generatedHTML, err := prepareMarpInput(root, input, source, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,11 +117,23 @@ func TestPrepareMarpInputExpandsChartWithoutImports(t *testing.T) {
 	if prepared == input {
 		t.Fatal("chart-only Marp input was not prepared")
 	}
+	if !generatedHTML {
+		t.Fatal("generated chart HTML was not reported to the Marp exporter")
+	}
 	content, err := os.ReadFile(prepared)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertContains(t, string(content), `class="karte-chart"`)
+}
+
+func TestBarChartRejectsDuplicateCategoryAndSeries(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "data.csv"), "category,value,series\nA,10,Actual\nA,12,Actual\n")
+	_, _, err := RenderString(root, `@chart(type="bar" path="data.csv" x="category" y="value" series="series")`)
+	if err == nil || !strings.Contains(err.Error(), `duplicates bar category "A" and series "Actual"`) {
+		t.Fatalf("expected duplicate bar key error, got %v", err)
+	}
 }
 
 func TestChartDirectiveRejectsInvalidInput(t *testing.T) {

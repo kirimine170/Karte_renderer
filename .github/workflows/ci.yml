@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go-test:
+    name: Go tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Run Go tests
+        run: go test -count=1 ./...
+
+  quality:
+    name: Formatting and vet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Check gofmt
+        shell: bash
+        run: |
+          files="$(gofmt -l $(git ls-files '*.go'))"
+          test -z "$files" || { printf 'gofmt required:\n%s\n' "$files"; exit 1; }
+      - name: Run go vet
+        run: go vet ./...
+
+  node-test:
+    name: Node fixture tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  p0-pdf-preflight:
+    name: P0 real PDF preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install Poppler
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes poppler-utils
+      - name: Locate Chrome
+        id: chrome
+        shell: bash
+        run: |
+          browser="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium || true)"
+          test -n "$browser" || { echo "Chrome/Chromium is not installed on the runner"; exit 1; }
+          echo "path=$browser" >> "$GITHUB_OUTPUT"
+      - name: Render and preflight the exact 48-page B5 fixture
+        shell: bash
+        run: |
+          mkdir -p build/p0-preflight
+          go run ./cmd/karte-renderer \
+            --pdf-engine chromium \
+            --pdf-binary "${{ steps.chrome.outputs.path }}" \
+            --expected-pages 48 \
+            --preflight-report build/p0-preflight/report.json \
+            --pdfinfo-binary "$(command -v pdfinfo)" \
+            --pdffonts-binary "$(command -v pdffonts)" \
+            --pdftotext-binary "$(command -v pdftotext)" \
+            testdata/preflight/48-pages.md \
+            build/p0-preflight/book.pdf
+          grep -q '"passed": true' build/p0-preflight/report.json
+          test "$(pdfinfo build/p0-preflight/book.pdf | awk '/^Pages:/ { print $2 }')" = "48"
+      - name: Upload preflight evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p0-pdf-preflight
+          path: build/p0-preflight/
+          if-no-files-found: warn
+          retention-days: 7

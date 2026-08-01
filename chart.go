@@ -215,6 +215,7 @@ func parseChartCSV(data []byte, spec chartSpec) (chartDataset, error) {
 	dataset := chartDataset{}
 	seriesSeen := map[string]bool{}
 	categorySeen := map[string]bool{}
+	barKeys := map[string]int{}
 	for rowIndex, row := range records[1:] {
 		cell := func(name string) string {
 			index := columns[name]
@@ -256,6 +257,13 @@ func parseChartCSV(data []byte, spec chartSpec) (chartDataset, error) {
 			if err != nil {
 				return chartDataset{}, err
 			}
+		}
+		if spec.Type == "bar" {
+			key := datum.category + "\x00" + datum.series
+			if firstRow, exists := barKeys[key]; exists {
+				return chartDataset{}, fmt.Errorf("row %d duplicates bar category %q and series %q from row %d", rowIndex+2, datum.category, datum.series, firstRow)
+			}
+			barKeys[key] = rowIndex + 2
 		}
 		dataset.records = append(dataset.records, datum)
 	}

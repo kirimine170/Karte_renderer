@@ -204,6 +204,30 @@ exit 2
 	}
 }
 
+func TestConvertMarpChartAutomaticallyEnablesHTML(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell helper is Unix-only")
+	}
+	root := t.TempDir()
+	input := filepath.Join(root, "slides.md")
+	output := filepath.Join(root, "slides.html")
+	argsFile := filepath.Join(root, "args.txt")
+	writeFile(t, filepath.Join(root, "data.csv"), "x,y\n1,2\n2,3\n")
+	writeFile(t, input, "---\nmarp: true\n---\n@chart(type=\"line\" path=\"data.csv\" x=\"x\" y=\"y\")\n")
+	binary := filepath.Join(root, "fake-marp")
+	writeExecutable(t, binary, "#!/bin/sh\nprintf '%s\\n' \"$@\" > "+shellSingleQuote(argsFile)+"\nwhile [ \"$#\" -gt 0 ]; do\n  if [ \"$1\" = \"--output\" ]; then\n    shift\n    printf 'fake-html' > \"$1\"\n    exit 0\n  fi\n  shift\ndone\nexit 2\n")
+	if _, err := ConvertFile(context.Background(), input, output, ConvertOptions{Root: root, Marp: MarpOptions{Binary: binary}}); err != nil {
+		t.Fatal(err)
+	}
+	args, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(args), "--html\n") {
+		t.Fatalf("generated chart HTML was sent to Marp without --html:\n%s", args)
+	}
+}
+
 func TestExportHTMLPDFWithChromiumCommand(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell helper is Unix-only")

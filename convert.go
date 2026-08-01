@@ -122,12 +122,16 @@ func ConvertFile(ctx context.Context, input, output string, opts ConvertOptions)
 		if ext != ".html" && ext != ".htm" && ext != ".pdf" && ext != ".pptx" {
 			return fm, fmt.Errorf("unsupported Marp output extension %q (use .html, .pdf, or .pptx)", ext)
 		}
-		marpInput, cleanup, err := prepareMarpInput(root, inputAbs, string(source), opts.HardWrap)
+		marpInput, cleanup, generatedHTML, err := prepareMarpInput(root, inputAbs, string(source), opts.HardWrap)
 		if err != nil {
 			return fm, err
 		}
 		defer cleanup()
-		if err := ExportMarp(ctx, marpInput, outputAbs, opts.Marp); err != nil {
+		marpOptions := opts.Marp
+		if generatedHTML {
+			marpOptions.HTML = true
+		}
+		if err := ExportMarp(ctx, marpInput, outputAbs, marpOptions); err != nil {
 			return fm, err
 		}
 		return fm, nil
@@ -249,31 +253,32 @@ func loadDocumentCSS(opts ConvertOptions) (string, error) {
 	return string(b), nil
 }
 
-func prepareMarpInput(root, input, source string, hardwrap bool) (string, func(), error) {
+func prepareMarpInput(root, input, source string, hardwrap bool) (string, func(), bool, error) {
 	if !importRe.MatchString(source) && !strings.Contains(source, "@chart(") {
-		return input, func() {}, nil
+		return input, func() {}, false, nil
 	}
 	r := NewRenderer(OSFileSystem{})
 	expanded, err := r.expandImports(root, filepath.Dir(input), source, hardwrap)
 	if err != nil {
-		return "", func() {}, fmt.Errorf("expand Marp imports: %w", err)
+		return "", func() {}, false, fmt.Errorf("expand Marp imports: %w", err)
 	}
+	generatedHTML := strings.Contains(expanded, `<div class="karte-chart"`)
 	tmp, err := os.CreateTemp(filepath.Dir(input), ".karte-marp-*.md")
 	if err != nil {
-		return "", func() {}, fmt.Errorf("create temporary Marp input: %w", err)
+		return "", func() {}, false, fmt.Errorf("create temporary Marp input: %w", err)
 	}
 	name := tmp.Name()
 	cleanup := func() { _ = os.Remove(name) }
 	if _, err := tmp.WriteString(expanded); err != nil {
 		tmp.Close()
 		cleanup()
-		return "", func() {}, fmt.Errorf("write temporary Marp input: %w", err)
+		return "", func() {}, false, fmt.Errorf("write temporary Marp input: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
 		cleanup()
-		return "", func() {}, fmt.Errorf("close temporary Marp input: %w", err)
+		return "", func() {}, false, fmt.Errorf("close temporary Marp input: %w", err)
 	}
-	return name, cleanup, nil
+	return name, cleanup, generatedHTML, nil
 }
 
 // ExportMarp converts a Markdown slide deck with the official Marp CLI.

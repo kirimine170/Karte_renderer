@@ -51,6 +51,8 @@ presenter notes. See the
 - Local asset resolution when HTML is written to a different output directory.
 - Context-aware Go APIs, atomic HTML writes, actionable external-tool errors,
   and a dependency doctor.
+- An additive `RenderResult` API for front matter, render dependencies, links,
+  assets, and non-fatal diagnostics.
 
 ## Requirements
 
@@ -115,6 +117,18 @@ Render an embedded Markdown document:
 ```go
 html, frontMatter, err := renderer.RenderMarkdown(projectRoot, "content/page.md")
 ```
+
+Collect the complete render metadata contract when the caller needs dependency
+tracking or asset diagnostics:
+
+```go
+result, err := renderer.RenderMarkdownResult(projectRoot, "content/page.md")
+fmt.Println(result.Metadata.Dependencies)
+fmt.Println(result.Metadata.Diagnostics)
+```
+
+The versioning, path, ordering, and diagnostic rules are documented in
+[`docs/render-result-metadata.md`](docs/render-result-metadata.md).
 
 Convert a file based on its metadata and output extension:
 

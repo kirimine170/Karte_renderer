@@ -269,8 +269,25 @@ func protectFencedDisplayMath(source string) (string, []fencedDisplayMath) {
 	codeFence := byte(0)
 	codeFenceLength := 0
 	rawHTMLCodeContainer := ""
+	htmlComment := false
 	for i := 0; i < len(lines); {
 		line := lineWithoutEnding(lines[i])
+		if htmlComment {
+			out.WriteString(lines[i])
+			if strings.Contains(line, "-->") {
+				htmlComment = false
+			}
+			i++
+			continue
+		}
+		if commentStart := strings.Index(line, "<!--"); commentStart >= 0 {
+			out.WriteString(lines[i])
+			if !strings.Contains(line[commentStart+4:], "-->") {
+				htmlComment = true
+			}
+			i++
+			continue
+		}
 		if codeFence != 0 {
 			out.WriteString(lines[i])
 			if isClosingMarkdownFence(line, codeFence, codeFenceLength) {
@@ -301,7 +318,7 @@ func protectFencedDisplayMath(source string) (string, []fencedDisplayMath) {
 			i++
 			continue
 		}
-		if !isDisplayMathFence(line) {
+		if !isDisplayMathFenceAt(lines, i) {
 			out.WriteString(lines[i])
 			i++
 			continue
@@ -309,7 +326,7 @@ func protectFencedDisplayMath(source string) (string, []fencedDisplayMath) {
 
 		closing := -1
 		for j := i + 1; j < len(lines); j++ {
-			if isDisplayMathFence(lineWithoutEnding(lines[j])) {
+			if isDisplayMathFenceLine(lineWithoutEnding(lines[j])) {
 				closing = j
 				break
 			}
@@ -356,7 +373,7 @@ func closesRawHTMLCodeContainer(line, tag string) bool {
 
 func leadingSpaces(line string) string {
 	spaces := 0
-	for spaces < len(line) && line[spaces] == ' ' {
+	for spaces < len(line) && (line[spaces] == ' ' || line[spaces] == '\t') {
 		spaces++
 	}
 	return line[:spaces]
@@ -422,9 +439,80 @@ func isClosingMarkdownFence(line string, marker byte, minimumLength int) bool {
 	return length >= minimumLength && strings.TrimSpace(line[length:]) == ""
 }
 
-func isDisplayMathFence(line string) bool {
-	line = markdownFencePrefix(line)
-	return line != "" && strings.TrimSpace(line) == "$$$"
+func isDisplayMathFenceLine(line string) bool {
+	return strings.TrimSpace(line) == "$$$"
+}
+
+func isDisplayMathFenceAt(lines []string, index int) bool {
+	line := lineWithoutEnding(lines[index])
+	if !isDisplayMathFenceLine(line) {
+		return false
+	}
+	indent := markdownIndentColumns(line)
+	if indent <= 3 {
+		return true
+	}
+	for previous := index - 1; previous >= 0; previous-- {
+		candidate := lineWithoutEnding(lines[previous])
+		if strings.TrimSpace(candidate) == "" {
+			continue
+		}
+		if contentIndent, ok := markdownListContentIndent(candidate); ok && contentIndent <= indent {
+			return true
+		}
+		if markdownIndentColumns(candidate) == 0 {
+			return false
+		}
+	}
+	return false
+}
+
+func markdownIndentColumns(line string) int {
+	columns := 0
+	for _, char := range line {
+		switch char {
+		case ' ':
+			columns++
+		case '\t':
+			columns += 4 - columns%4
+		default:
+			return columns
+		}
+	}
+	return columns
+}
+
+func markdownListContentIndent(line string) (int, bool) {
+	indent := markdownIndentColumns(line)
+	trimmed := strings.TrimLeft(line, " \t")
+	markerLength := 0
+	if len(trimmed) >= 2 && strings.ContainsRune("-+*", rune(trimmed[0])) && (trimmed[1] == ' ' || trimmed[1] == '\t') {
+		markerLength = 1
+	} else {
+		for markerLength < len(trimmed) && trimmed[markerLength] >= '0' && trimmed[markerLength] <= '9' {
+			markerLength++
+		}
+		if markerLength == 0 || markerLength >= len(trimmed) || (trimmed[markerLength] != '.' && trimmed[markerLength] != ')') {
+			return 0, false
+		}
+		markerLength++
+		if markerLength >= len(trimmed) || (trimmed[markerLength] != ' ' && trimmed[markerLength] != '\t') {
+			return 0, false
+		}
+	}
+	contentIndent := indent + markerLength
+	for contentIndent-indent < len(trimmed) {
+		char := trimmed[contentIndent-indent]
+		if char == ' ' {
+			contentIndent++
+			continue
+		}
+		if char == '\t' {
+			contentIndent += 4 - contentIndent%4
+		}
+		break
+	}
+	return contentIndent, true
 }
 
 func (r *Renderer) expandImports(root, baseDir, s string, hardwrap bool) (string, error) {
@@ -678,6 +766,7 @@ func processKaTeX(s string) string {
 			return k
 		})
 	}
+	s = protect(regexp.MustCompile(`(?s)<!--.*?-->`), s)
 	s = protect(regexp.MustCompile(`(?s)<pre[^>]*>.*?</pre>`), s)
 	s = protect(regexp.MustCompile(`(?s)<code[^>]*>.*?</code>`), s)
 	s = regexp.MustCompile(`(?s)\$\$\$(.+?)\$\$\$`).ReplaceAllStringFunc(s, func(m string) string {

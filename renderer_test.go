@@ -151,6 +151,45 @@ func TestMultilineKatexFenceRetainsListIndentation(t *testing.T) {
 	}
 }
 
+func TestMultilineKatexFenceRetainsFourSpaceListIndentation(t *testing.T) {
+	source := "10. item\n\n    $$$\n    \\begin{aligned}\n    x &= 1 \\\\\n    y &= 2\n    \\end{aligned}\n    $$$\n\n    after"
+	rendered, _, err := RenderString(t.TempDir(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listStart := strings.Index(rendered, "<li>")
+	listEnd := strings.Index(rendered, "</li>")
+	mathAt := strings.Index(rendered, `class="katex-display"`)
+	afterAt := strings.Index(rendered, "<p>after</p>")
+	if listStart < 0 || listEnd < 0 || mathAt < listStart || mathAt > listEnd || afterAt < mathAt || afterAt > listEnd {
+		t.Fatalf("four-space math and following content must remain inside the list item:\n%s", rendered)
+	}
+}
+
+func TestMultilineKatexFenceInsideHTMLCommentIsNotRendered(t *testing.T) {
+	source := "Before\n\n<!--\n$$$\n\\begin{aligned}\nx &= 1\n\\end{aligned}\n$$$\n-->\n\nAfter"
+	rendered, _, err := RenderString(t.TempDir(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(rendered, `class="katex-display"`) {
+		t.Fatalf("math fence inside an HTML comment must remain literal:\n%s", rendered)
+	}
+	assertContains(t, rendered, "<p>After</p>")
+}
+
+func TestTopLevelIndentedMathFenceRemainsCode(t *testing.T) {
+	source := "    $$$\n    x &= 1\n    $$$"
+	rendered, _, err := RenderString(t.TempDir(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, rendered, "<pre><code>$$$")
+	if strings.Contains(rendered, `class="katex-display"`) {
+		t.Fatalf("top-level indented code must not become display math:\n%s", rendered)
+	}
+}
+
 func TestUnclosedMultilineKatexFenceRemainsLiteral(t *testing.T) {
 	rendered, _, err := RenderString(t.TempDir(), "$$$\n\\begin{aligned}\nx &= 1")
 	if err != nil {

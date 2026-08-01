@@ -45,6 +45,18 @@ type PDFOptions struct {
 	Binary          string
 	AllowLocalFiles bool
 	ExtraArgs       []string
+	// PageSize, Orientation, and margins override front-matter printout fields
+	// individually. PageNumbers uses a pointer so callers can explicitly turn a
+	// front-matter value off as well as on.
+	PageSize      string
+	Orientation   string
+	Margin        string
+	InsideMargin  string
+	OutsideMargin string
+	Header        string
+	Footer        string
+	PageNumbers   *bool
+	ChapterStart  string
 }
 
 // DependencyStatus describes an optional external rendering dependency.
@@ -128,6 +140,11 @@ func ConvertFile(ctx context.Context, input, output string, opts ConvertOptions)
 	if err != nil {
 		return fm, err
 	}
+	printout, err := resolvePrintoutOptions(renderedFM.Printout, opts.PDF)
+	if err != nil {
+		return renderedFM, err
+	}
+	rendered = applyPrintoutOptions(rendered, printout)
 	rendered = insertBaseURL(rendered, filepath.Dir(inputAbs))
 	if ext == ".html" || ext == ".htm" {
 		if err := writeFileAtomic(outputAbs, []byte(rendered)); err != nil {
@@ -151,6 +168,17 @@ func ConvertFile(ctx context.Context, input, output string, opts ConvertOptions)
 	}
 	pdfOpts := opts.PDF
 	pdfOpts.AllowLocalFiles = true // the generated document uses a root-scoped file: base URL
+	// The resolved printout style is already embedded in rendered. Clear the
+	// source fields so ExportHTMLPDF does not create a second override layer.
+	pdfOpts.PageSize = ""
+	pdfOpts.Orientation = ""
+	pdfOpts.Margin = ""
+	pdfOpts.InsideMargin = ""
+	pdfOpts.OutsideMargin = ""
+	pdfOpts.Header = ""
+	pdfOpts.Footer = ""
+	pdfOpts.PageNumbers = nil
+	pdfOpts.ChapterStart = ""
 	if err := ExportHTMLPDF(ctx, tmpName, outputAbs, pdfOpts); err != nil {
 		return renderedFM, err
 	}
@@ -261,6 +289,19 @@ func ExportHTMLPDF(ctx context.Context, htmlFile, outputPDF string, opts PDFOpti
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	htmlAbs, err := filepath.Abs(htmlFile)
+	if err != nil {
+		return fmt.Errorf("resolve HTML input: %w", err)
+	}
+	htmlAbs, cleanupPrintout, err := prepareHTMLPDFInput(htmlAbs, opts)
+	if err != nil {
+		return err
+	}
+	defer cleanupPrintout()
+	outputAbs, err := filepath.Abs(outputPDF)
+	if err != nil {
+		return fmt.Errorf("resolve PDF output: %w", err)
+	}
 	engine := strings.ToLower(opts.Engine)
 	if engine == "" {
 		engine = "auto"
@@ -295,14 +336,6 @@ func ExportHTMLPDF(ctx context.Context, htmlFile, outputPDF string, opts PDFOpti
 		return fmt.Errorf("no PDF engine found; install Chrome/Chromium or wkhtmltopdf, or set KARTE_PDF_BINARY")
 	}
 
-	htmlAbs, err := filepath.Abs(htmlFile)
-	if err != nil {
-		return fmt.Errorf("resolve HTML input: %w", err)
-	}
-	outputAbs, err := filepath.Abs(outputPDF)
-	if err != nil {
-		return fmt.Errorf("resolve PDF output: %w", err)
-	}
 	if err := os.MkdirAll(filepath.Dir(outputAbs), 0o755); err != nil {
 		return fmt.Errorf("create PDF directory: %w", err)
 	}
@@ -345,6 +378,37 @@ func ExportHTMLPDF(ctx context.Context, htmlFile, outputPDF string, opts PDFOpti
 		return fmt.Errorf("PDF engine did not create output %s: %w", outputAbs, err)
 	}
 	return nil
+}
+
+func prepareHTMLPDFInput(htmlFile string, opts PDFOptions) (string, func(), error) {
+	printout, err := resolvePrintoutOptions(PrintoutOptions{}, opts)
+	if err != nil {
+		return "", func() {}, err
+	}
+	if printout.empty() {
+		return htmlFile, func() {}, nil
+	}
+	document, err := os.ReadFile(htmlFile)
+	if err != nil {
+		return "", func() {}, fmt.Errorf("read HTML input for printout options: %w", err)
+	}
+	rendered := applyPrintoutOptions(string(document), printout)
+	tmp, err := os.CreateTemp(filepath.Dir(htmlFile), ".karte-printout-*.html")
+	if err != nil {
+		return "", func() {}, fmt.Errorf("create printout HTML: %w", err)
+	}
+	name := tmp.Name()
+	cleanup := func() { _ = os.Remove(name) }
+	if _, err := tmp.WriteString(rendered); err != nil {
+		tmp.Close()
+		cleanup()
+		return "", func() {}, fmt.Errorf("write printout HTML: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		cleanup()
+		return "", func() {}, fmt.Errorf("close printout HTML: %w", err)
+	}
+	return name, cleanup, nil
 }
 
 // Diagnose reports the optional tools available to the conversion pipeline.

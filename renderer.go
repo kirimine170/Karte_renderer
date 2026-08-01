@@ -21,13 +21,14 @@ import (
 
 // FrontMatter contains YAML metadata found at the top of a Markdown document.
 type FrontMatter struct {
-	Title   string                 `yaml:"title"`
-	Marp    bool                   `yaml:"marp"`
-	Theme   string                 `yaml:"theme"`
-	Layout  string                 `yaml:"layout"`
-	Owners  []string               `yaml:"owners"`
-	Viewers []string               `yaml:"viewers"`
-	Data    map[string]interface{} `yaml:",inline"`
+	Title    string                 `yaml:"title"`
+	Marp     bool                   `yaml:"marp"`
+	Theme    string                 `yaml:"theme"`
+	Layout   string                 `yaml:"layout"`
+	Owners   []string               `yaml:"owners"`
+	Viewers  []string               `yaml:"viewers"`
+	Printout PrintoutOptions        `yaml:"printout"`
+	Data     map[string]interface{} `yaml:",inline"`
 }
 
 // FileSystem abstracts file access for renderers and tests.
@@ -174,10 +175,11 @@ func parseFrontMatter(s string) (string, FrontMatter, error) {
 
 func parseYAML(yml string, fm *FrontMatter) error {
 	type knownFrontMatter struct {
-		Title  string `yaml:"title"`
-		Marp   bool   `yaml:"marp"`
-		Theme  string `yaml:"theme"`
-		Layout string `yaml:"layout"`
+		Title    string          `yaml:"title"`
+		Marp     bool            `yaml:"marp"`
+		Theme    string          `yaml:"theme"`
+		Layout   string          `yaml:"layout"`
+		Printout PrintoutOptions `yaml:"printout"`
 	}
 	var known knownFrontMatter
 	if err := yaml.Unmarshal([]byte(yml), &known); err != nil {
@@ -191,6 +193,7 @@ func parseYAML(yml string, fm *FrontMatter) error {
 	fm.Marp = known.Marp
 	fm.Theme = known.Theme
 	fm.Layout = known.Layout
+	fm.Printout = known.Printout
 	owners, err := frontMatterStringList(data["owners"])
 	if err != nil {
 		return fmt.Errorf("invalid YAML front matter owners: %w", err)

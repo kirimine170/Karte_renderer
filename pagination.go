@@ -6,6 +6,7 @@ import (
 )
 
 var pageBreakDirectiveRe = regexp.MustCompile(`^[ ]{0,3}@pagebreak(?:\(\s*(before|after)\s*\))?[ \t]*$`)
+var paginationRawHTMLOpenRe = regexp.MustCompile(`(?i)<(pre|code|textarea|script|style)(?:\s[^>]*)?>`)
 
 const paginationStyle = `@media print{
 .karte-page-break,.karte-break-before{display:block;height:0;margin:0;border:0;break-before:page;page-break-before:always;}
@@ -21,6 +22,7 @@ func expandPageBreakDirectives(source string) string {
 	var out strings.Builder
 	codeFence := byte(0)
 	codeFenceLength := 0
+	rawHTMLContainer := ""
 	for _, original := range lines {
 		line, ending := splitPaginationLine(original)
 		if codeFence != 0 {
@@ -31,9 +33,21 @@ func expandPageBreakDirectives(source string) string {
 			}
 			continue
 		}
+		if rawHTMLContainer != "" {
+			out.WriteString(original)
+			if closesPaginationRawHTML(line, rawHTMLContainer) {
+				rawHTMLContainer = ""
+			}
+			continue
+		}
 		if marker, length, ok := paginationFenceOpen(line); ok {
 			codeFence = marker
 			codeFenceLength = length
+			out.WriteString(original)
+			continue
+		}
+		if container := opensPaginationRawHTML(line); container != "" {
+			rawHTMLContainer = container
 			out.WriteString(original)
 			continue
 		}
@@ -50,6 +64,22 @@ func expandPageBreakDirectives(source string) string {
 		out.WriteString(ending)
 	}
 	return out.String()
+}
+
+func opensPaginationRawHTML(line string) string {
+	match := paginationRawHTMLOpenRe.FindStringSubmatchIndex(line)
+	if match == nil {
+		return ""
+	}
+	tag := strings.ToLower(line[match[2]:match[3]])
+	if closesPaginationRawHTML(line[match[1]:], tag) {
+		return ""
+	}
+	return tag
+}
+
+func closesPaginationRawHTML(line, tag string) bool {
+	return strings.Contains(strings.ToLower(line), "</"+tag+">")
 }
 
 func injectPaginationStyle(document string) string {

@@ -64,7 +64,7 @@ func (r *Renderer) expandCharts(root, baseDir, source string) (string, error) {
 			out.WriteString(original)
 			continue
 		}
-		if len(line)-len(strings.TrimLeft(line, " ")) > 3 {
+		if chartDirectiveIsIndentedCode(line) {
 			out.WriteString(original)
 			continue
 		}
@@ -100,9 +100,28 @@ func (r *Renderer) expandCharts(root, baseDir, source string) (string, error) {
 			return "", fmt.Errorf("chart %s: %w", spec.Path, err)
 		}
 		out.WriteString(svg)
+		if ending == "" {
+			ending = "\n"
+		}
+		out.WriteString(ending)
 		out.WriteString(ending)
 	}
 	return out.String(), nil
+}
+
+func chartDirectiveIsIndentedCode(line string) bool {
+	columns := 0
+	for _, char := range line {
+		switch char {
+		case ' ':
+			columns++
+		case '\t':
+			columns += 4 - columns%4
+		default:
+			return columns >= 4
+		}
+	}
+	return columns >= 4
 }
 
 func parseChartSpec(attrs map[string]string) (chartSpec, error) {
@@ -135,6 +154,9 @@ func parseChartSpec(attrs map[string]string) (chartSpec, error) {
 	}
 	if spec.Type != "histogram" && spec.Y == "" {
 		return chartSpec{}, fmt.Errorf("@chart type %s missing y column", spec.Type)
+	}
+	if spec.Type == "histogram" && spec.Series != "" {
+		return chartSpec{}, fmt.Errorf("@chart type histogram does not support a series column")
 	}
 	if attrs["width"] != "" {
 		spec.Width, err = chartInteger(attrs["width"], "width", 320, 2000)

@@ -82,6 +82,48 @@ func TestChartDirectiveInsideCodeFenceRemainsLiteral(t *testing.T) {
 	}
 }
 
+func TestChartDirectiveInsideTabIndentedCodeRemainsLiteral(t *testing.T) {
+	rendered, _, err := RenderString(t.TempDir(), "\t@chart(type=\"scatter\" path=\"missing.csv\" x=\"x\" y=\"y\")")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, rendered, "<pre><code>@chart")
+	if strings.Contains(rendered, `class="karte-chart"`) {
+		t.Fatalf("tab-indented chart directive was executed:\n%s", rendered)
+	}
+}
+
+func TestGeneratedChartTerminatesRawHTMLBlock(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "data.csv"), chartCSVFixture)
+	rendered, _, err := RenderString(root, "@chart(type=\"scatter\" path=\"data.csv\" x=\"attendance\" y=\"profit\")\n# After")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, rendered, "<h1>After</h1>")
+}
+
+func TestPrepareMarpInputExpandsChartWithoutImports(t *testing.T) {
+	root := t.TempDir()
+	input := filepath.Join(root, "slides.md")
+	writeFile(t, filepath.Join(root, "data.csv"), chartCSVFixture)
+	source := "---\nmarp: true\n---\n@chart(type=\"scatter\" path=\"data.csv\" x=\"attendance\" y=\"profit\")\n"
+	writeFile(t, input, source)
+	prepared, cleanup, err := prepareMarpInput(root, input, source, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	if prepared == input {
+		t.Fatal("chart-only Marp input was not prepared")
+	}
+	content, err := os.ReadFile(prepared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, string(content), `class="karte-chart"`)
+}
+
 func TestChartDirectiveRejectsInvalidInput(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "data.csv"), chartCSVFixture)
@@ -91,6 +133,7 @@ func TestChartDirectiveRejectsInvalidInput(t *testing.T) {
 		{"type", `@chart(type="pie" path="data.csv" x="attendance" y="profit")`, "unsupported chart type"},
 		{"column", `@chart(type="scatter" path="data.csv" x="missing" y="profit")`, `missing CSV column "missing"`},
 		{"dimension", `@chart(type="scatter" path="data.csv" x="attendance" y="profit" width="12")`, "invalid chart width"},
+		{"histogram series", `@chart(type="histogram" path="data.csv" x="attendance" series="venue")`, "does not support a series"},
 		{"traversal", `@chart(type="scatter" path="../data.csv" x="attendance" y="profit")`, "chart path escapes root"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

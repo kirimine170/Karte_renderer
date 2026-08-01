@@ -203,7 +203,7 @@ func loadDocumentCSS(opts ConvertOptions) (string, error) {
 }
 
 func prepareMarpInput(root, input, source string, hardwrap bool) (string, func(), error) {
-	if !importRe.MatchString(source) {
+	if !importRe.MatchString(source) && !strings.Contains(source, "@chart(") {
 		return input, func() {}, nil
 	}
 	r := NewRenderer(OSFileSystem{})

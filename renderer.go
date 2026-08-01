@@ -70,6 +70,7 @@ const fallbackLayout = `<!doctype html>
 var defaultRenderer = NewRenderer(OSFileSystem{})
 var fmRe = regexp.MustCompile(`(?s)\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\z)`)
 var importRe = regexp.MustCompile(`(?m)^@import\(([^)]*)\)[ \t]*\r?$`)
+var rawHTMLCodeOpenRe = regexp.MustCompile(`(?i)<(pre|code)(?:\s[^>]*)?>`)
 
 // RenderMarkdown renders a Markdown file below root, returning HTML and front matter.
 func RenderMarkdown(root string, path string) (string, FrontMatter, error) {
@@ -267,6 +268,7 @@ func protectFencedDisplayMath(source string) (string, []fencedDisplayMath) {
 	blocks := make([]fencedDisplayMath, 0)
 	codeFence := byte(0)
 	codeFenceLength := 0
+	rawHTMLCodeContainer := ""
 	for i := 0; i < len(lines); {
 		line := lineWithoutEnding(lines[i])
 		if codeFence != 0 {
@@ -278,9 +280,23 @@ func protectFencedDisplayMath(source string) (string, []fencedDisplayMath) {
 			i++
 			continue
 		}
+		if rawHTMLCodeContainer != "" {
+			out.WriteString(lines[i])
+			if closesRawHTMLCodeContainer(line, rawHTMLCodeContainer) {
+				rawHTMLCodeContainer = ""
+			}
+			i++
+			continue
+		}
 		if marker, length, ok := openingMarkdownFence(line); ok {
 			codeFence = marker
 			codeFenceLength = length
+			out.WriteString(lines[i])
+			i++
+			continue
+		}
+		if container := openingRawHTMLCodeContainer(line); container != "" {
+			rawHTMLCodeContainer = container
 			out.WriteString(lines[i])
 			i++
 			continue
@@ -313,11 +329,37 @@ func protectFencedDisplayMath(source string) (string, []fencedDisplayMath) {
 			placeholder: placeholder,
 			expression:  strings.TrimSpace(expression.String()),
 		})
+		out.WriteString(leadingSpaces(line))
 		out.WriteString(placeholder)
 		out.WriteString(lineEnding(lines[closing]))
 		i = closing + 1
 	}
 	return out.String(), blocks
+}
+
+func openingRawHTMLCodeContainer(line string) string {
+	match := rawHTMLCodeOpenRe.FindStringSubmatchIndex(line)
+	if match == nil {
+		return ""
+	}
+	tag := strings.ToLower(line[match[2]:match[3]])
+	if closesRawHTMLCodeContainer(line[match[1]:], tag) {
+		return ""
+	}
+	return tag
+}
+
+func closesRawHTMLCodeContainer(line, tag string) bool {
+	lower := strings.ToLower(line)
+	return strings.Contains(lower, "</"+tag+">") || strings.Contains(lower, "</"+tag+" >")
+}
+
+func leadingSpaces(line string) string {
+	spaces := 0
+	for spaces < len(line) && line[spaces] == ' ' {
+		spaces++
+	}
+	return line[:spaces]
 }
 
 func restoreFencedDisplayMath(rendered string, blocks []fencedDisplayMath) string {

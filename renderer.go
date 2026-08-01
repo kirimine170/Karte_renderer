@@ -768,11 +768,11 @@ func (r *Renderer) expandImportsRecursive(root, baseDir, s string, hardwrap bool
 	if firstErr != nil {
 		return out, firstErr
 	}
-	charted, err := r.expandCharts(root, baseDir, out)
+	charted, err := r.expandCharts(root, baseDir, out, collector)
 	if err != nil {
 		return "", err
 	}
-	return r.expandFigureDirectives(root, baseDir, charted)
+	return r.expandFigureDirectives(root, baseDir, charted, collector)
 }
 
 func parseAttrs(s string) map[string]string {

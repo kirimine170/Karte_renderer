@@ -29,7 +29,7 @@ const figureStyle = `<style id="karte-figure-style">
 @media print{.karte-figure,.karte-chart-figure,.karte-table-figure{break-inside:avoid-page;page-break-inside:avoid;}.karte-figure figcaption,.karte-chart-figure figcaption,.karte-table-figure figcaption{break-before:avoid-page;page-break-before:avoid;}}
 </style>`
 
-func (r *Renderer) expandFigureDirectives(root, baseDir, source string) (string, error) {
+func (r *Renderer) expandFigureDirectives(root, baseDir, source string, collector *metadataCollector) (string, error) {
 	lines := strings.SplitAfter(source, "\n")
 	var out strings.Builder
 	codeFence := byte(0)
@@ -58,7 +58,7 @@ func (r *Renderer) expandFigureDirectives(root, baseDir, source string) (string,
 		switch {
 		case strings.HasPrefix(trimmed, "@figure(") && strings.HasSuffix(trimmed, ")"):
 			attrs := parseAttrs(strings.TrimSuffix(strings.TrimPrefix(trimmed, "@figure("), ")"))
-			markup, err := r.renderImageFigure(root, baseDir, attrs)
+			markup, err := r.renderImageFigure(root, baseDir, attrs, collector)
 			if err != nil {
 				return "", err
 			}
@@ -82,7 +82,7 @@ func (r *Renderer) expandFigureDirectives(root, baseDir, source string) (string,
 	return out.String(), nil
 }
 
-func (r *Renderer) renderImageFigure(root, baseDir string, attrs map[string]string) (string, error) {
+func (r *Renderer) renderImageFigure(root, baseDir string, attrs map[string]string, collector *metadataCollector) (string, error) {
 	id, err := requiredFigureID(attrs["id"], "@figure")
 	if err != nil {
 		return "", err
@@ -107,6 +107,9 @@ func (r *Renderer) renderImageFigure(root, baseDir string, attrs map[string]stri
 	}
 	if _, err := r.fs.Stat(full); err != nil {
 		return "", fmt.Errorf("read figure asset %s: %w", sourcePath, err)
+	}
+	if collector != nil {
+		collector.addAsset(baseDir, sourcePath)
 	}
 	imageSource := fileURL(full)
 	alt := attrs["alt"]
@@ -241,35 +244,116 @@ func numberFiguresAndResolveReferences(content string) (string, error) {
 }
 
 func replaceFigureReferences(content string, targets map[string]figureTarget) (string, error) {
-	type protectedRegion struct{ placeholder, content string }
-	protected := make([]protectedRegion, 0)
-	protect := func(pattern *regexp.Regexp, input string) string {
-		return pattern.ReplaceAllStringFunc(input, func(match string) string {
-			placeholder := fmt.Sprintf("\x00KARTE_FIGURE_CODE_%d\x00", len(protected))
-			protected = append(protected, protectedRegion{placeholder: placeholder, content: match})
-			return placeholder
+	protectedElements := map[string]bool{
+		"a": true, "code": true, "pre": true, "script": true,
+		"style": true, "textarea": true, "title": true,
+	}
+	protectedStack := make([]string, 0)
+	var out strings.Builder
+	var firstErr error
+	replaceText := func(text string) string {
+		if len(protectedStack) > 0 || firstErr != nil {
+			return text
+		}
+		return figureRefRe.ReplaceAllStringFunc(text, func(reference string) string {
+			if firstErr != nil {
+				return reference
+			}
+			id := figureRefRe.FindStringSubmatch(reference)[1]
+			target, ok := targets[id]
+			if !ok {
+				firstErr = fmt.Errorf("unknown figure reference %q", id)
+				return reference
+			}
+			label := figureKindLabel(target.kind) + " " + fmt.Sprint(target.number)
+			return `<a class="karte-cross-reference" href="#` + html.EscapeString(id) + `">` + label + `</a>`
 		})
 	}
-	content = protect(regexp.MustCompile(`(?s)<pre\b[^>]*>.*?</pre>`), content)
-	content = protect(regexp.MustCompile(`(?s)<code\b[^>]*>.*?</code>`), content)
-	var firstErr error
-	content = figureRefRe.ReplaceAllStringFunc(content, func(reference string) string {
-		if firstErr != nil {
-			return reference
+
+	for cursor := 0; cursor < len(content); {
+		tagStart := strings.IndexByte(content[cursor:], '<')
+		if tagStart < 0 {
+			out.WriteString(replaceText(content[cursor:]))
+			break
 		}
-		id := figureRefRe.FindStringSubmatch(reference)[1]
-		target, ok := targets[id]
-		if !ok {
-			firstErr = fmt.Errorf("unknown figure reference %q", id)
-			return reference
+		tagStart += cursor
+		out.WriteString(replaceText(content[cursor:tagStart]))
+		tagEnd := htmlTagEnd(content, tagStart)
+		if tagEnd < 0 {
+			out.WriteString(replaceText(content[tagStart:]))
+			break
 		}
-		label := figureKindLabel(target.kind) + " " + fmt.Sprint(target.number)
-		return `<a class="karte-cross-reference" href="#` + html.EscapeString(id) + `">` + label + `</a>`
-	})
-	for _, region := range protected {
-		content = strings.ReplaceAll(content, region.placeholder, region.content)
+		tag := content[tagStart:tagEnd]
+		name, closing, selfClosing := htmlTagName(tag)
+		if closing && protectedElements[name] {
+			for i := len(protectedStack) - 1; i >= 0; i-- {
+				if protectedStack[i] == name {
+					protectedStack = protectedStack[:i]
+					break
+				}
+			}
+		}
+		out.WriteString(tag)
+		if !closing && !selfClosing && protectedElements[name] {
+			protectedStack = append(protectedStack, name)
+		}
+		cursor = tagEnd
 	}
-	return content, firstErr
+	return out.String(), firstErr
+}
+
+func htmlTagEnd(content string, start int) int {
+	if strings.HasPrefix(content[start:], "<!--") {
+		if end := strings.Index(content[start+4:], "-->"); end >= 0 {
+			return start + 4 + end + len("-->")
+		}
+		return -1
+	}
+	quote := byte(0)
+	for i := start + 1; i < len(content); i++ {
+		switch content[i] {
+		case '\'', '"':
+			if quote == 0 {
+				quote = content[i]
+			} else if quote == content[i] {
+				quote = 0
+			}
+		case '>':
+			if quote == 0 {
+				return i + 1
+			}
+		}
+	}
+	return -1
+}
+
+func htmlTagName(tag string) (name string, closing, selfClosing bool) {
+	if len(tag) < 3 || tag[0] != '<' {
+		return "", false, false
+	}
+	i := 1
+	for i < len(tag) && (tag[i] == ' ' || tag[i] == '\t' || tag[i] == '\r' || tag[i] == '\n') {
+		i++
+	}
+	if i < len(tag) && tag[i] == '/' {
+		closing = true
+		i++
+	}
+	start := i
+	for i < len(tag) {
+		char := tag[i]
+		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (i > start && (char >= '0' && char <= '9')) {
+			i++
+			continue
+		}
+		break
+	}
+	if start == i {
+		return "", closing, false
+	}
+	name = strings.ToLower(tag[start:i])
+	selfClosing = strings.HasSuffix(strings.TrimSpace(tag[:len(tag)-1]), "/")
+	return name, closing, selfClosing
 }
 
 func figureKindLabel(kind string) string {

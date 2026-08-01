@@ -3,6 +3,7 @@ package renderer
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -68,6 +69,59 @@ func TestFigureReferencesInsideCodeRemainLiteral(t *testing.T) {
 	}
 	if strings.Count(rendered, "@ref(example)") != 2 {
 		t.Fatalf("code references changed:\n%s", rendered)
+	}
+}
+
+func TestFigureReferencesOnlyReplaceEligibleHTMLText(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "image.svg"), `<svg xmlns="http://www.w3.org/2000/svg"/>`)
+	source := `See @ref(image).
+
+[Link label @ref(image)](https://example.com/@ref(image))
+
+<span data-reference="@ref(missing)">Attribute stays intact</span>
+
+@figure(id="image" src="image.svg" caption="Image")`
+	rendered, _, err := RenderString(root, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(rendered, `class="karte-cross-reference"`) != 1 {
+		t.Fatalf("unexpected cross-reference replacements:\n%s", rendered)
+	}
+	assertContains(t, rendered, `>Link label @ref(image)</a>`)
+	assertContains(t, rendered, `data-reference="@ref(missing)"`)
+}
+
+func TestFigureReferenceTagScannerHandlesGreaterThanInAttribute(t *testing.T) {
+	targets := map[string]figureTarget{"image": {kind: "figure", number: 1}}
+	content := `<span title="1 > 0 @ref(missing)">See @ref(image).</span>`
+	rendered, err := replaceFigureReferences(content, targets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, rendered, `title="1 > 0 @ref(missing)"`)
+	assertContains(t, rendered, `href="#image">Figure 1</a>`)
+}
+
+func TestRenderResultRecordsDirectiveResources(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "image.svg"), `<svg xmlns="http://www.w3.org/2000/svg"/>`)
+	writeFile(t, filepath.Join(root, "data.csv"), "x,y\n1,2\n")
+	source := `@chart(type="line" path="data.csv" x="x" y="y")
+
+@figure(id="image" src="image.svg" caption="Image")`
+	result, err := RenderStringResult(root, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantDependencies := []RenderDependency{{Kind: DependencyCSVImport, Path: "data.csv"}}
+	if !reflect.DeepEqual(result.Metadata.Dependencies, wantDependencies) {
+		t.Fatalf("dependencies = %#v, want %#v", result.Metadata.Dependencies, wantDependencies)
+	}
+	wantAssets := []RenderAsset{{Reference: "image.svg", Path: "image.svg", Status: AssetAvailable}}
+	if !reflect.DeepEqual(result.Metadata.Assets, wantAssets) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, wantAssets)
 	}
 }
 

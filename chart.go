@@ -38,7 +38,7 @@ type chartDataset struct {
 	categories []string
 }
 
-func (r *Renderer) expandCharts(root, baseDir, source string) (string, error) {
+func (r *Renderer) expandCharts(root, baseDir, source string, collector *metadataCollector) (string, error) {
 	lines := strings.SplitAfter(source, "\n")
 	var out strings.Builder
 	codeFence := byte(0)
@@ -90,6 +90,9 @@ func (r *Renderer) expandCharts(root, baseDir, source string) (string, error) {
 		data, err := r.fs.ReadFile(full)
 		if err != nil {
 			return "", fmt.Errorf("read chart CSV %s: %w", spec.Path, err)
+		}
+		if collector != nil {
+			collector.addDependency(DependencyCSVImport, full)
 		}
 		dataset, err := parseChartCSV(data, spec)
 		if err != nil {

@@ -20,6 +20,7 @@ type chartSpec struct {
 	Type                     string
 	Path                     string
 	X, Y, Series             string
+	ID, Caption, Source      string
 	Title, XLabel, YLabel    string
 	XUnit, YUnit, Note       string
 	Width, Height, Histogram int
@@ -124,9 +125,11 @@ func chartDirectiveIsIndentedCode(line string) bool {
 }
 
 func parseChartSpec(attrs map[string]string) (chartSpec, error) {
+	var err error
 	spec := chartSpec{
 		Type: strings.ToLower(strings.TrimSpace(attrs["type"])), Path: strings.TrimSpace(attrs["path"]),
 		X: attrs["x"], Y: attrs["y"], Series: attrs["series"], Title: attrs["title"],
+		ID: attrs["id"], Caption: attrs["caption"], Source: attrs["source"],
 		XLabel: attrs["xLabel"], YLabel: attrs["yLabel"], XUnit: attrs["xUnit"],
 		YUnit: attrs["yUnit"], Note: attrs["note"], Width: defaultChartWidth,
 		Height: defaultChartHeight, Histogram: 10,
@@ -142,6 +145,10 @@ func parseChartSpec(attrs map[string]string) (chartSpec, error) {
 	if spec.Path == "" {
 		return chartSpec{}, fmt.Errorf("@chart missing path")
 	}
+	spec.ID, err = optionalFigureID(spec.ID, "@chart")
+	if err != nil {
+		return chartSpec{}, err
+	}
 	if spec.X == "" {
 		return chartSpec{}, fmt.Errorf("@chart missing x column")
 	}
@@ -151,7 +158,6 @@ func parseChartSpec(attrs map[string]string) (chartSpec, error) {
 	if spec.Type == "histogram" && spec.Series != "" {
 		return chartSpec{}, fmt.Errorf("@chart type histogram does not support a series column")
 	}
-	var err error
 	if attrs["width"] != "" {
 		spec.Width, err = chartInteger(attrs["width"], "width", 320, 2000)
 		if err != nil {
@@ -326,8 +332,9 @@ func renderChartSVG(spec chartSpec, dataset chartDataset) (string, error) {
 	if label == "" {
 		label = spec.Type + " chart"
 	}
-	return fmt.Sprintf(`<div class="karte-chart" data-chart-type="%s"><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="%s" viewBox="0 0 %d %d" width="%d" height="%d" style="display:block;max-width:100%%;height:auto"><title>%s</title><rect width="100%%" height="100%%" fill="white"/>%s</svg></div>`,
-		html.EscapeString(spec.Type), html.EscapeString(label), spec.Width, spec.Height, spec.Width, spec.Height, html.EscapeString(label), body.String()), nil
+	chart := fmt.Sprintf(`<div class="karte-chart" data-chart-type="%s"><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="%s" viewBox="0 0 %d %d" width="%d" height="%d" style="display:block;max-width:100%%;height:auto"><title>%s</title><rect width="100%%" height="100%%" fill="white"/>%s</svg></div>`,
+		html.EscapeString(spec.Type), html.EscapeString(label), spec.Width, spec.Height, spec.Width, spec.Height, html.EscapeString(label), body.String())
+	return wrapNumberedFigure("figure", spec.ID, "karte-chart-figure", chart, spec.Caption, spec.Source, ""), nil
 }
 
 func drawChartAxes(out *strings.Builder, spec chartSpec, dataset chartDataset, left, top, width, height, xMin, xMax, yMin, yMax float64) {

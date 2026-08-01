@@ -2,6 +2,7 @@ package renderer
 
 import (
 	"errors"
+	"html"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -72,6 +73,167 @@ func TestInlineAndBlockKatexSyntax(t *testing.T) {
 	}
 	assertContains(t, html, `<span class="katex" data-katex="x+1">x+1</span>`)
 	assertContains(t, html, `<div class="katex-display" data-katex="y=x^2">y=x^2</div>`)
+}
+
+func TestMultilineKatexBlockIsProtectedBeforeMarkdownRendering(t *testing.T) {
+	source := `Before
+
+$$$
+\begin{aligned}
+f(x) &= x^2 + 1 \\
+g(x) &= \begin{cases}
+x & x \ge 0 \\
+-x & x < 0
+\end{cases}
+\end{aligned}
+$$$
+
+After`
+
+	rendered, _, err := RenderString(t.TempDir(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantExpression := `\begin{aligned}
+f(x) &= x^2 + 1 \\
+g(x) &= \begin{cases}
+x & x \ge 0 \\
+-x & x < 0
+\end{cases}
+\end{aligned}`
+	assertContains(t, rendered, `<div class="katex-display" data-katex="`+html.EscapeString(wantExpression)+`">`)
+	if strings.Contains(rendered, "<p>$$$") || strings.Contains(rendered, `<p><div class="katex-display"`) || strings.Contains(rendered, "<code>") {
+		t.Fatalf("multiline display math was parsed as Markdown:\n%s", rendered)
+	}
+}
+
+func TestMultilineKatexFenceInsideCodeBlockIsNotRendered(t *testing.T) {
+	source := "```text\n$$$\n\\begin{aligned}\nx &= 1\n\\end{aligned}\n$$$\n```"
+	rendered, _, err := RenderString(t.TempDir(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, rendered, "<code class=\"language-text\">$$$")
+	if strings.Contains(rendered, `class="katex-display"`) {
+		t.Fatalf("math fence inside a code block must remain literal:\n%s", rendered)
+	}
+}
+
+func TestMultilineKatexFenceInsideListCodeBlockIsNotRendered(t *testing.T) {
+	source := "- item\n\n    ```md\n    $$$\n    \\begin{aligned}\n    x &= 1\n    \\end{aligned}\n    $$$\n    ```"
+	rendered, _, err := RenderString(t.TempDir(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, rendered, "<code class=\"language-md\">$$$")
+	if strings.Contains(rendered, `class="katex-display"`) || strings.Contains(rendered, "KARTE_MATH_BLOCK") {
+		t.Fatalf("math inside a list-nested code fence must remain literal:\n%s", rendered)
+	}
+}
+
+func TestMultilineKatexFenceInsideRawHTMLCodeIsNotRendered(t *testing.T) {
+	for _, tag := range []string{"pre", "code"} {
+		t.Run(tag, func(t *testing.T) {
+			source := "<" + tag + ">\n$$$\n\\begin{aligned}\nx &= 1\n\\end{aligned}\n$$$\n</" + tag + ">"
+			rendered, _, err := RenderString(t.TempDir(), source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertContains(t, rendered, "$$$")
+			if strings.Contains(rendered, `class="katex-display"`) {
+				t.Fatalf("math fence inside raw HTML %s must remain literal:\n%s", tag, rendered)
+			}
+		})
+	}
+}
+
+func TestMultilineKatexFenceRetainsListIndentation(t *testing.T) {
+	source := "- item\n\n  $$$\n  \\begin{aligned}\n  x &= 1\n  \\end{aligned}\n  $$$\n\n  after"
+	rendered, _, err := RenderString(t.TempDir(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listStart := strings.Index(rendered, "<li>")
+	listEnd := strings.Index(rendered, "</li>")
+	mathAt := strings.Index(rendered, `class="katex-display"`)
+	afterAt := strings.Index(rendered, "<p>after</p>")
+	if listStart < 0 || listEnd < 0 || mathAt < listStart || mathAt > listEnd || afterAt < mathAt || afterAt > listEnd {
+		t.Fatalf("indented math and following content must remain inside the list item:\n%s", rendered)
+	}
+}
+
+func TestMultilineKatexFenceRetainsFourSpaceListIndentation(t *testing.T) {
+	source := "10. item\n\n    $$$\n    \\begin{aligned}\n    x &= 1 \\\\\n    y &= 2\n    \\end{aligned}\n    $$$\n\n    after"
+	rendered, _, err := RenderString(t.TempDir(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listStart := strings.Index(rendered, "<li>")
+	listEnd := strings.Index(rendered, "</li>")
+	mathAt := strings.Index(rendered, `class="katex-display"`)
+	afterAt := strings.Index(rendered, "<p>after</p>")
+	if listStart < 0 || listEnd < 0 || mathAt < listStart || mathAt > listEnd || afterAt < mathAt || afterAt > listEnd {
+		t.Fatalf("four-space math and following content must remain inside the list item:\n%s", rendered)
+	}
+}
+
+func TestMultilineKatexFenceInsideHTMLCommentIsNotRendered(t *testing.T) {
+	source := "Before\n\n<!--\n$$$\n\\begin{aligned}\nx &= 1\n\\end{aligned}\n$$$\n-->\n\nAfter"
+	rendered, _, err := RenderString(t.TempDir(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(rendered, `class="katex-display"`) {
+		t.Fatalf("math fence inside an HTML comment must remain literal:\n%s", rendered)
+	}
+	assertContains(t, rendered, "<p>After</p>")
+}
+
+func TestMultilineKatexFenceInsideBlockquoteIsRendered(t *testing.T) {
+	source := "> $$$\n> \\begin{aligned}\n> x &= 1 \\\\\n> y &= 2\n> \\end{aligned}\n> $$$"
+	rendered, _, err := RenderString(t.TempDir(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	quoteStart := strings.Index(rendered, "<blockquote>")
+	quoteEnd := strings.Index(rendered, "</blockquote>")
+	mathAt := strings.Index(rendered, `class="katex-display"`)
+	if quoteStart < 0 || quoteEnd < 0 || mathAt < quoteStart || mathAt > quoteEnd || strings.Contains(rendered, `<p><div class="katex-display"`) {
+		t.Fatalf("blockquote math must remain a valid display block inside the quote:\n%s", rendered)
+	}
+}
+
+func TestInlineCodeHTMLTagDoesNotSuppressFollowingMath(t *testing.T) {
+	source := "Use `<code>` here.\n\n$$$\n\\begin{aligned}\nx &= 1\n\\end{aligned}\n$$$"
+	rendered, _, err := RenderString(t.TempDir(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, rendered, `<code>&lt;code&gt;</code>`)
+	assertContains(t, rendered, `class="katex-display"`)
+}
+
+func TestTopLevelIndentedMathFenceRemainsCode(t *testing.T) {
+	source := "    $$$\n    x &= 1\n    $$$"
+	rendered, _, err := RenderString(t.TempDir(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, rendered, "<pre><code>$$$")
+	if strings.Contains(rendered, `class="katex-display"`) {
+		t.Fatalf("top-level indented code must not become display math:\n%s", rendered)
+	}
+}
+
+func TestUnclosedMultilineKatexFenceRemainsLiteral(t *testing.T) {
+	rendered, _, err := RenderString(t.TempDir(), "$$$\n\\begin{aligned}\nx &= 1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(rendered, `class="katex-display"`) {
+		t.Fatalf("unclosed math fence must not be converted:\n%s", rendered)
+	}
 }
 
 func TestCSVImport(t *testing.T) {

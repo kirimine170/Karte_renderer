@@ -74,8 +74,10 @@ const fallbackLayout = `<!doctype html>
 var defaultRenderer = NewRenderer(OSFileSystem{})
 var fmRe = regexp.MustCompile(`(?s)\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\z)`)
 var importRe = regexp.MustCompile(`(?m)^@import\(([^)]*)\)[ \t]*\r?$`)
+var rawHTMLCodeOpenRe = regexp.MustCompile(`(?i)<(pre|code)(?:\s[^>]*)?>`)
 var katexDisplayRe = regexp.MustCompile(`(?s)\$\$\$(.+?)\$\$\$`)
 var katexInlineRe = regexp.MustCompile(`\$([^$\n]+?)\$`)
+var katexProtectedCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
 var katexProtectedPreRe = regexp.MustCompile(`(?s)<pre[^>]*>.*?</pre>`)
 var katexProtectedCodeRe = regexp.MustCompile(`(?s)<code[^>]*>.*?</code>`)
 
@@ -296,12 +298,13 @@ func frontMatterStringList(value interface{}) ([]string, error) {
 }
 
 func markdownHTML(s string, hardwrap bool) (string, error) {
+	protected, mathBlocks := protectFencedDisplayMath(s)
 	md := newMarkdown(hardwrap)
 	var out bytes.Buffer
-	if err := md.Convert([]byte(s), &out); err != nil {
+	if err := md.Convert([]byte(protected), &out); err != nil {
 		return "", fmt.Errorf("render markdown: %w", err)
 	}
-	return processKaTeX(out.String()), nil
+	return processKaTeX(restoreFencedDisplayMath(out.String(), mathBlocks)), nil
 }
 
 func newMarkdown(hardwrap bool) goldmark.Markdown {
@@ -317,6 +320,354 @@ func newMarkdown(hardwrap bool) goldmark.Markdown {
 		rendererOptions = append(rendererOptions, goldmark.WithRendererOptions(gmhtml.WithHardWraps()))
 	}
 	return goldmark.New(rendererOptions...)
+}
+
+type fencedDisplayMath struct {
+	placeholder string
+	expression  string
+}
+
+// protectFencedDisplayMath removes Karte's multiline $$$ blocks before
+// Goldmark can interpret TeX control characters as Markdown. The placeholders
+// are HTML comments so they survive the Markdown pass without introducing an
+// invalid paragraph around the restored block element.
+func protectFencedDisplayMath(source string) (string, []fencedDisplayMath) {
+	lines := strings.SplitAfter(source, "\n")
+	prefix := "KARTE_MATH_BLOCK"
+	for strings.Contains(source, prefix) {
+		prefix += "_"
+	}
+
+	var out strings.Builder
+	blocks := make([]fencedDisplayMath, 0)
+	codeFence := byte(0)
+	codeFenceLength := 0
+	rawHTMLCodeContainer := ""
+	htmlComment := false
+	for i := 0; i < len(lines); {
+		line := lineWithoutEnding(lines[i])
+		if htmlComment {
+			out.WriteString(lines[i])
+			if strings.Contains(line, "-->") {
+				htmlComment = false
+			}
+			i++
+			continue
+		}
+		if commentStart := strings.Index(line, "<!--"); commentStart >= 0 {
+			out.WriteString(lines[i])
+			if !strings.Contains(line[commentStart+4:], "-->") {
+				htmlComment = true
+			}
+			i++
+			continue
+		}
+		if codeFence != 0 {
+			out.WriteString(lines[i])
+			if isClosingMarkdownFence(line, codeFence, codeFenceLength) {
+				codeFence = 0
+				codeFenceLength = 0
+			}
+			i++
+			continue
+		}
+		if rawHTMLCodeContainer != "" {
+			out.WriteString(lines[i])
+			if closesRawHTMLCodeContainer(line, rawHTMLCodeContainer) {
+				rawHTMLCodeContainer = ""
+			}
+			i++
+			continue
+		}
+		if marker, length, ok := openingMarkdownFenceAt(lines, i); ok {
+			codeFence = marker
+			codeFenceLength = length
+			out.WriteString(lines[i])
+			i++
+			continue
+		}
+		if container := openingRawHTMLCodeContainer(line); container != "" {
+			rawHTMLCodeContainer = container
+			out.WriteString(lines[i])
+			i++
+			continue
+		}
+		containerPrefix, quoteDepth, ok := displayMathFenceAt(lines, i)
+		if !ok {
+			out.WriteString(lines[i])
+			i++
+			continue
+		}
+
+		closing := -1
+		for j := i + 1; j < len(lines); j++ {
+			_, closingQuoteDepth, isFence := displayMathFenceAt(lines, j)
+			if isFence && closingQuoteDepth == quoteDepth {
+				closing = j
+				break
+			}
+		}
+		if closing < 0 {
+			out.WriteString(lines[i])
+			i++
+			continue
+		}
+
+		var expression strings.Builder
+		for j := i + 1; j < closing; j++ {
+			content := lineWithoutEnding(lines[j])
+			_, unquoted, depth := splitBlockquoteContainer(content)
+			if depth >= quoteDepth {
+				content = unquoted
+			}
+			expression.WriteString(content)
+			expression.WriteString(lineEnding(lines[j]))
+		}
+		placeholder := fmt.Sprintf("<!--%s_%d-->", prefix, len(blocks))
+		blocks = append(blocks, fencedDisplayMath{
+			placeholder: placeholder,
+			expression:  strings.TrimSpace(expression.String()),
+		})
+		out.WriteString(containerPrefix)
+		out.WriteString(placeholder)
+		out.WriteString(lineEnding(lines[closing]))
+		i = closing + 1
+	}
+	return out.String(), blocks
+}
+
+func openingRawHTMLCodeContainer(line string) string {
+	_, content, _ := splitBlockquoteContainer(line)
+	masked := maskInlineCodeSpans(content)
+	match := rawHTMLCodeOpenRe.FindStringSubmatchIndex(masked)
+	if match == nil {
+		return ""
+	}
+	tag := strings.ToLower(content[match[2]:match[3]])
+	if closesRawHTMLCodeContainer(content[match[1]:], tag) {
+		return ""
+	}
+	return tag
+}
+
+func closesRawHTMLCodeContainer(line, tag string) bool {
+	_, line, _ = splitBlockquoteContainer(line)
+	lower := strings.ToLower(line)
+	return strings.Contains(lower, "</"+tag+">") || strings.Contains(lower, "</"+tag+" >")
+}
+
+func leadingSpaces(line string) string {
+	spaces := 0
+	for spaces < len(line) && (line[spaces] == ' ' || line[spaces] == '\t') {
+		spaces++
+	}
+	return line[:spaces]
+}
+
+func restoreFencedDisplayMath(rendered string, blocks []fencedDisplayMath) string {
+	for _, block := range blocks {
+		escaped := html.EscapeString(block.expression)
+		replacement := `<div class="katex-display" data-katex="` + escaped + `">` + escaped + `</div>`
+		rendered = strings.ReplaceAll(rendered, block.placeholder, replacement)
+	}
+	return rendered
+}
+
+func lineWithoutEnding(line string) string {
+	line = strings.TrimSuffix(line, "\n")
+	return strings.TrimSuffix(line, "\r")
+}
+
+func lineEnding(line string) string {
+	if strings.HasSuffix(line, "\r\n") {
+		return "\r\n"
+	}
+	if strings.HasSuffix(line, "\n") {
+		return "\n"
+	}
+	return ""
+}
+
+func markdownFencePrefix(line string) string {
+	spaces := 0
+	for spaces < len(line) && line[spaces] == ' ' {
+		spaces++
+	}
+	if spaces > 3 {
+		return ""
+	}
+	return line[spaces:]
+}
+
+func openingMarkdownFenceAt(lines []string, index int) (byte, int, bool) {
+	line := lineWithoutEnding(lines[index])
+	_, line, quoteDepth := splitBlockquoteContainer(line)
+	indent := markdownIndentColumns(line)
+	if indent > 3 && !isListContainerIndent(lines, index, indent, quoteDepth) {
+		return 0, 0, false
+	}
+	line = strings.TrimLeft(line, " \t")
+	if line == "" || (line[0] != '`' && line[0] != '~') {
+		return 0, 0, false
+	}
+	marker := line[0]
+	length := 0
+	for length < len(line) && line[length] == marker {
+		length++
+	}
+	return marker, length, length >= 3
+}
+
+func isClosingMarkdownFence(line string, marker byte, minimumLength int) bool {
+	_, line, _ = splitBlockquoteContainer(line)
+	line = strings.TrimLeft(line, " \t")
+	if line == "" || line[0] != marker {
+		return false
+	}
+	length := 0
+	for length < len(line) && line[length] == marker {
+		length++
+	}
+	return length >= minimumLength && strings.TrimSpace(line[length:]) == ""
+}
+
+func isDisplayMathFenceLine(line string) bool {
+	return strings.TrimSpace(line) == "$$$"
+}
+
+func displayMathFenceAt(lines []string, index int) (string, int, bool) {
+	line := lineWithoutEnding(lines[index])
+	quotePrefix, content, quoteDepth := splitBlockquoteContainer(line)
+	if !isDisplayMathFenceLine(content) {
+		return "", 0, false
+	}
+	indent := markdownIndentColumns(content)
+	if indent <= 3 {
+		return quotePrefix + leadingSpaces(content), quoteDepth, true
+	}
+	if isListContainerIndent(lines, index, indent, quoteDepth) {
+		return quotePrefix + leadingSpaces(content), quoteDepth, true
+	}
+	return "", 0, false
+}
+
+func isListContainerIndent(lines []string, index, indent, quoteDepth int) bool {
+	for previous := index - 1; previous >= 0; previous-- {
+		candidate := lineWithoutEnding(lines[previous])
+		_, content, depth := splitBlockquoteContainer(candidate)
+		if strings.TrimSpace(content) == "" {
+			continue
+		}
+		if depth != quoteDepth {
+			if depth < quoteDepth {
+				return false
+			}
+			continue
+		}
+		if contentIndent, ok := markdownListContentIndent(content); ok && contentIndent <= indent {
+			return true
+		}
+		if markdownIndentColumns(content) == 0 {
+			return false
+		}
+	}
+	return false
+}
+
+func splitBlockquoteContainer(line string) (string, string, int) {
+	position := 0
+	depth := 0
+	for position < len(line) {
+		start := position
+		spaces := 0
+		for position < len(line) && line[position] == ' ' && spaces < 3 {
+			position++
+			spaces++
+		}
+		if position >= len(line) || line[position] != '>' {
+			position = start
+			break
+		}
+		position++
+		if position < len(line) && (line[position] == ' ' || line[position] == '\t') {
+			position++
+		}
+		depth++
+	}
+	return line[:position], line[position:], depth
+}
+
+func maskInlineCodeSpans(line string) string {
+	masked := []byte(line)
+	for start := 0; start < len(line); {
+		if line[start] != '`' {
+			start++
+			continue
+		}
+		run := 1
+		for start+run < len(line) && line[start+run] == '`' {
+			run++
+		}
+		closing := strings.Index(line[start+run:], strings.Repeat("`", run))
+		if closing < 0 {
+			start += run
+			continue
+		}
+		end := start + run + closing + run
+		for index := start; index < end; index++ {
+			masked[index] = ' '
+		}
+		start = end
+	}
+	return string(masked)
+}
+
+func markdownIndentColumns(line string) int {
+	columns := 0
+	for _, char := range line {
+		switch char {
+		case ' ':
+			columns++
+		case '\t':
+			columns += 4 - columns%4
+		default:
+			return columns
+		}
+	}
+	return columns
+}
+
+func markdownListContentIndent(line string) (int, bool) {
+	indent := markdownIndentColumns(line)
+	trimmed := strings.TrimLeft(line, " \t")
+	markerLength := 0
+	if len(trimmed) >= 2 && strings.ContainsRune("-+*", rune(trimmed[0])) && (trimmed[1] == ' ' || trimmed[1] == '\t') {
+		markerLength = 1
+	} else {
+		for markerLength < len(trimmed) && trimmed[markerLength] >= '0' && trimmed[markerLength] <= '9' {
+			markerLength++
+		}
+		if markerLength == 0 || markerLength >= len(trimmed) || (trimmed[markerLength] != '.' && trimmed[markerLength] != ')') {
+			return 0, false
+		}
+		markerLength++
+		if markerLength >= len(trimmed) || (trimmed[markerLength] != ' ' && trimmed[markerLength] != '\t') {
+			return 0, false
+		}
+	}
+	contentIndent := indent + markerLength
+	for contentIndent-indent < len(trimmed) {
+		char := trimmed[contentIndent-indent]
+		if char == ' ' {
+			contentIndent++
+			continue
+		}
+		if char == '\t' {
+			contentIndent += 4 - contentIndent%4
+		}
+		break
+	}
+	return contentIndent, true
 }
 
 func (r *Renderer) expandImports(root, baseDir, s string, hardwrap bool) (string, error) {
@@ -577,6 +928,7 @@ func processKaTeX(s string) string {
 			return k
 		})
 	}
+	s = protect(katexProtectedCommentRe, s)
 	s = protect(katexProtectedPreRe, s)
 	s = protect(katexProtectedCodeRe, s)
 	s = katexDisplayRe.ReplaceAllStringFunc(s, func(m string) string {

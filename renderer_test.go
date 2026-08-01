@@ -2,6 +2,7 @@ package renderer
 
 import (
 	"errors"
+	"html"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -72,6 +73,61 @@ func TestInlineAndBlockKatexSyntax(t *testing.T) {
 	}
 	assertContains(t, html, `<span class="katex" data-katex="x+1">x+1</span>`)
 	assertContains(t, html, `<div class="katex-display" data-katex="y=x^2">y=x^2</div>`)
+}
+
+func TestMultilineKatexBlockIsProtectedBeforeMarkdownRendering(t *testing.T) {
+	source := `Before
+
+$$$
+\begin{aligned}
+f(x) &= x^2 + 1 \\
+g(x) &= \begin{cases}
+x & x \ge 0 \\
+-x & x < 0
+\end{cases}
+\end{aligned}
+$$$
+
+After`
+
+	rendered, _, err := RenderString(t.TempDir(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantExpression := `\begin{aligned}
+f(x) &= x^2 + 1 \\
+g(x) &= \begin{cases}
+x & x \ge 0 \\
+-x & x < 0
+\end{cases}
+\end{aligned}`
+	assertContains(t, rendered, `<div class="katex-display" data-katex="`+html.EscapeString(wantExpression)+`">`)
+	if strings.Contains(rendered, "<p>$$$") || strings.Contains(rendered, `<p><div class="katex-display"`) || strings.Contains(rendered, "<code>") {
+		t.Fatalf("multiline display math was parsed as Markdown:\n%s", rendered)
+	}
+}
+
+func TestMultilineKatexFenceInsideCodeBlockIsNotRendered(t *testing.T) {
+	source := "```text\n$$$\n\\begin{aligned}\nx &= 1\n\\end{aligned}\n$$$\n```"
+	rendered, _, err := RenderString(t.TempDir(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, rendered, "<code class=\"language-text\">$$$")
+	if strings.Contains(rendered, `class="katex-display"`) {
+		t.Fatalf("math fence inside a code block must remain literal:\n%s", rendered)
+	}
+}
+
+func TestUnclosedMultilineKatexFenceRemainsLiteral(t *testing.T) {
+	rendered, _, err := RenderString(t.TempDir(), "$$$\n\\begin{aligned}\nx &= 1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(rendered, `class="katex-display"`) {
+		t.Fatalf("unclosed math fence must not be converted:\n%s", rendered)
+	}
 }
 
 func TestCSVImport(t *testing.T) {

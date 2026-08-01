@@ -34,8 +34,9 @@ presenter notes. See the
 
 - CommonMark and GitHub Flavored Markdown rendering.
 - Real YAML front matter, including lists, booleans, numbers, and nested data.
-- Karte-compatible fields: `title`, `marp`, `theme`, `layout`, `owners`, and
-  `viewers`; all metadata is also available through `FrontMatter.Data`.
+- Karte-compatible fields: `title`, `marp`, `theme`, `layout`, `owners`,
+  `viewers`, and typed `printout`; all metadata is also available through
+  `FrontMatter.Data`.
 - Root-scoped Markdown, CSV, and TeX `@import` directives, including nested
   import expansion, cycle detection, selected CSV columns, inline or display
   TeX placeholders, and symlink escape protection.
@@ -45,9 +46,9 @@ presenter notes. See the
   `themes/default/layout.html`, with a printable standalone fallback layout.
 - A built-in Purple Color Palette stylesheet for normal Markdown documents,
   with explicit custom CSS and no-CSS modes.
-- A4 portrait output for normal-document PDFs with explicit paged-media
-  margins and background. Custom stylesheets may replace this with their own
-  `@page` rule.
+- A4 portrait defaults plus validated A3/A4/A5/B4/B5/Letter/Legal overrides,
+  mirrored book margins, running header/footer, page-number folios, and
+  right-page chapter starts for normal-document PDF output.
 - Local asset resolution when HTML is written to a different output directory.
 - Context-aware Go APIs, atomic HTML writes, actionable external-tool errors,
   and a dependency doctor.
@@ -104,6 +105,15 @@ Common options:
 --pptx-editable         request Marp's experimental editable PPTX
 --pdf-engine ENGINE     auto, chromium, or wkhtmltopdf for document PDF
 --pdf-binary PATH       explicitly choose the document PDF executable
+--pdf-page-size SIZE    A3, A4, A5, B4, B5, Letter, or Legal
+--pdf-orientation MODE  portrait or landscape
+--pdf-margin LENGTHS    one to four physical page-margin lengths
+--pdf-inside-margin N   binding-edge margin for mirrored pages
+--pdf-outside-margin N  outside-edge margin for mirrored pages
+--pdf-header TEXT       running page header
+--pdf-footer TEXT       running page footer
+--pdf-page-numbers      show outside-edge page-number folios (or =false)
+--pdf-chapter-start N   right or any
 ```
 
 The environment variables `MARP_BINARY` and `KARTE_PDF_BINARY` are also
@@ -140,6 +150,45 @@ frontMatter, err := renderer.ConvertFile(ctx, "slides.md", "build/slides.pptx", 
     },
 })
 ```
+
+For a B5 book, Go callers can override the same fields individually:
+
+```go
+pageNumbers := true
+frontMatter, err := renderer.ConvertFile(ctx, "book.md", "build/book.pdf", renderer.ConvertOptions{
+    Root: projectRoot,
+    PDF: renderer.PDFOptions{
+        PageSize:      "B5",
+        Orientation:   "portrait",
+        Margin:        "18mm 15mm",
+        InsideMargin:  "20mm",
+        OutsideMargin: "14mm",
+        Header:        "Book title",
+        PageNumbers:   &pageNumbers,
+        ChapterStart:  "right",
+    },
+})
+```
+
+## Book printout front matter
+
+```yaml
+printout:
+  size: B5
+  orientation: portrait
+  margin: 18mm 15mm
+  insideMargin: 20mm
+  outsideMargin: 14mm
+  header: Book title
+  footer: Chapter title
+  pageNumbers: true
+  chapterStart: right
+```
+
+`printout: B5` is available as a shorthand. Explicit CLI/Go fields override
+only their matching front-matter fields. The renderer emits the settings as a
+late paged-media override, so screen styling is unchanged; mirrored `:left`
+and `:right` rules put the inside margin on the binding edge.
 
 The lower-level `ExportMarp` and `ExportHTMLPDF` functions are available when
 the caller already owns the Markdown/HTML pipeline. The legacy
@@ -202,6 +251,7 @@ go run ./cmd/karte-renderer examples/slides.md output/slides.pptx
 ```
 
 The test suite covers GFM, structured YAML, math/code boundaries, layouts,
-imports, path safety, Marp invocation, PDF-engine invocation, and CLI package
-buildability. The Node tests validate the linked karte-format fixture resources
-and render every fixture formula with the pinned KaTeX release.
+imports, path safety, book printout precedence and validation, Marp invocation,
+PDF-engine invocation, and CLI behavior. The Node tests validate the linked
+karte-format fixture resources and render every fixture formula with the pinned
+KaTeX release.

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	renderer "github.com/kirimine170/KarteRenderer"
@@ -17,6 +18,26 @@ func (s *stringList) Set(v string) error {
 	*s = append(*s, v)
 	return nil
 }
+
+type optionalBool struct{ target **bool }
+
+func (b *optionalBool) String() string {
+	if b == nil || b.target == nil || *b.target == nil {
+		return ""
+	}
+	return strconv.FormatBool(**b.target)
+}
+
+func (b *optionalBool) Set(value string) error {
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return err
+	}
+	*b.target = &parsed
+	return nil
+}
+
+func (b *optionalBool) IsBoolFlag() bool { return true }
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -49,6 +70,15 @@ func run(args []string) error {
 	fs.BoolVar(&opts.Marp.EditablePPTX, "pptx-editable", false, "request experimental editable PPTX output")
 	fs.StringVar(&opts.PDF.Engine, "pdf-engine", "auto", "document PDF engine: auto, chromium, or wkhtmltopdf")
 	fs.StringVar(&opts.PDF.Binary, "pdf-binary", "", "path to the document PDF engine")
+	fs.StringVar(&opts.PDF.PageSize, "pdf-page-size", "", "PDF page size: A3, A4, A5, B4, B5, Letter, or Legal")
+	fs.StringVar(&opts.PDF.Orientation, "pdf-orientation", "", "PDF page orientation: portrait or landscape")
+	fs.StringVar(&opts.PDF.Margin, "pdf-margin", "", "PDF page margin (one to four physical lengths)")
+	fs.StringVar(&opts.PDF.InsideMargin, "pdf-inside-margin", "", "PDF binding-edge margin")
+	fs.StringVar(&opts.PDF.OutsideMargin, "pdf-outside-margin", "", "PDF outside-edge margin")
+	fs.StringVar(&opts.PDF.Header, "pdf-header", "", "PDF running header text")
+	fs.StringVar(&opts.PDF.Footer, "pdf-footer", "", "PDF running footer text")
+	fs.Var(&optionalBool{target: &opts.PDF.PageNumbers}, "pdf-page-numbers", "show PDF page-number folios (may be set to false)")
+	fs.StringVar(&opts.PDF.ChapterStart, "pdf-chapter-start", "", "chapter page side: right or any")
 	fs.Usage = func() {
 		fmt.Fprintln(fs.Output(), "Usage: karte-renderer [convert] [options] INPUT.md OUTPUT.{html,pdf,pptx}")
 		fmt.Fprintln(fs.Output(), "       karte-renderer doctor")

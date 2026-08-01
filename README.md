@@ -176,6 +176,23 @@ only their matching front-matter fields. The renderer emits the settings as a
 late paged-media override, so screen styling is unchanged; mirrored `:left`
 and `:right` rules put the inside margin on the binding edge.
 
+### Page breaks and keep rules
+
+Use a standalone directive for a deterministic page boundary:
+
+```md
+@pagebreak
+@pagebreak(before)
+@pagebreak(after)
+```
+
+The plain form is an alias for `before`; directives in fenced code blocks stay
+literal. Print CSS also keeps headings with their following block and avoids
+splitting figures, captions, images, tables, code blocks, blockquotes, and
+display equations when the paged-media engine can honor the constraint.
+Trusted HTML/templates may use `.karte-break-before`, `.karte-break-after`,
+`.karte-keep-with-next`, or `.karte-keep-together` directly.
+
 The lower-level `ExportMarp` and `ExportHTMLPDF` functions are available when
 the caller already owns the Markdown/HTML pipeline. The legacy
 `ExportPDFWithBinary` function remains a direct `wkhtmltopdf` compatibility

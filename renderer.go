@@ -141,6 +141,7 @@ func (r *Renderer) render(root, baseDir, markdown string, hardwrap bool, css str
 	if fm.Marp {
 		content, err = RenderMarp(body)
 	} else {
+		body = expandPageBreakDirectives(body)
 		content, err = markdownHTML(body, hardwrap)
 	}
 	if err != nil {
@@ -158,6 +159,9 @@ func (r *Renderer) render(root, baseDir, markdown string, hardwrap bool, css str
 	out = strings.ReplaceAll(out, "{{CONTENT}}", content)
 	if runtime != "" && !hasKaTeXPlaceholder {
 		out = injectKaTeXRuntime(out, runtime)
+	}
+	if !fm.Marp {
+		out = injectPaginationStyle(out)
 	}
 	return out, fm, nil
 }

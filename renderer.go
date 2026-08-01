@@ -379,7 +379,7 @@ func protectFencedDisplayMath(source string) (string, []fencedDisplayMath) {
 			i++
 			continue
 		}
-		if marker, length, ok := openingMarkdownFence(line); ok {
+		if marker, length, ok := openingMarkdownFenceAt(lines, i); ok {
 			codeFence = marker
 			codeFenceLength = length
 			out.WriteString(lines[i])
@@ -392,7 +392,8 @@ func protectFencedDisplayMath(source string) (string, []fencedDisplayMath) {
 			i++
 			continue
 		}
-		if !isDisplayMathFenceAt(lines, i) {
+		containerPrefix, quoteDepth, ok := displayMathFenceAt(lines, i)
+		if !ok {
 			out.WriteString(lines[i])
 			i++
 			continue
@@ -400,7 +401,8 @@ func protectFencedDisplayMath(source string) (string, []fencedDisplayMath) {
 
 		closing := -1
 		for j := i + 1; j < len(lines); j++ {
-			if isDisplayMathFenceLine(lineWithoutEnding(lines[j])) {
+			_, closingQuoteDepth, isFence := displayMathFenceAt(lines, j)
+			if isFence && closingQuoteDepth == quoteDepth {
 				closing = j
 				break
 			}
@@ -413,14 +415,20 @@ func protectFencedDisplayMath(source string) (string, []fencedDisplayMath) {
 
 		var expression strings.Builder
 		for j := i + 1; j < closing; j++ {
-			expression.WriteString(lines[j])
+			content := lineWithoutEnding(lines[j])
+			_, unquoted, depth := splitBlockquoteContainer(content)
+			if depth >= quoteDepth {
+				content = unquoted
+			}
+			expression.WriteString(content)
+			expression.WriteString(lineEnding(lines[j]))
 		}
 		placeholder := fmt.Sprintf("<!--%s_%d-->", prefix, len(blocks))
 		blocks = append(blocks, fencedDisplayMath{
 			placeholder: placeholder,
 			expression:  strings.TrimSpace(expression.String()),
 		})
-		out.WriteString(leadingSpaces(line))
+		out.WriteString(containerPrefix)
 		out.WriteString(placeholder)
 		out.WriteString(lineEnding(lines[closing]))
 		i = closing + 1
@@ -429,18 +437,21 @@ func protectFencedDisplayMath(source string) (string, []fencedDisplayMath) {
 }
 
 func openingRawHTMLCodeContainer(line string) string {
-	match := rawHTMLCodeOpenRe.FindStringSubmatchIndex(line)
+	_, content, _ := splitBlockquoteContainer(line)
+	masked := maskInlineCodeSpans(content)
+	match := rawHTMLCodeOpenRe.FindStringSubmatchIndex(masked)
 	if match == nil {
 		return ""
 	}
-	tag := strings.ToLower(line[match[2]:match[3]])
-	if closesRawHTMLCodeContainer(line[match[1]:], tag) {
+	tag := strings.ToLower(content[match[2]:match[3]])
+	if closesRawHTMLCodeContainer(content[match[1]:], tag) {
 		return ""
 	}
 	return tag
 }
 
 func closesRawHTMLCodeContainer(line, tag string) bool {
+	_, line, _ = splitBlockquoteContainer(line)
 	lower := strings.ToLower(line)
 	return strings.Contains(lower, "</"+tag+">") || strings.Contains(lower, "</"+tag+" >")
 }
@@ -488,8 +499,14 @@ func markdownFencePrefix(line string) string {
 	return line[spaces:]
 }
 
-func openingMarkdownFence(line string) (byte, int, bool) {
-	line = markdownFencePrefix(line)
+func openingMarkdownFenceAt(lines []string, index int) (byte, int, bool) {
+	line := lineWithoutEnding(lines[index])
+	_, line, quoteDepth := splitBlockquoteContainer(line)
+	indent := markdownIndentColumns(line)
+	if indent > 3 && !isListContainerIndent(lines, index, indent, quoteDepth) {
+		return 0, 0, false
+	}
+	line = strings.TrimLeft(line, " \t")
 	if line == "" || (line[0] != '`' && line[0] != '~') {
 		return 0, 0, false
 	}
@@ -502,7 +519,8 @@ func openingMarkdownFence(line string) (byte, int, bool) {
 }
 
 func isClosingMarkdownFence(line string, marker byte, minimumLength int) bool {
-	line = markdownFencePrefix(line)
+	_, line, _ = splitBlockquoteContainer(line)
+	line = strings.TrimLeft(line, " \t")
 	if line == "" || line[0] != marker {
 		return false
 	}
@@ -517,28 +535,91 @@ func isDisplayMathFenceLine(line string) bool {
 	return strings.TrimSpace(line) == "$$$"
 }
 
-func isDisplayMathFenceAt(lines []string, index int) bool {
+func displayMathFenceAt(lines []string, index int) (string, int, bool) {
 	line := lineWithoutEnding(lines[index])
-	if !isDisplayMathFenceLine(line) {
-		return false
+	quotePrefix, content, quoteDepth := splitBlockquoteContainer(line)
+	if !isDisplayMathFenceLine(content) {
+		return "", 0, false
 	}
-	indent := markdownIndentColumns(line)
+	indent := markdownIndentColumns(content)
 	if indent <= 3 {
-		return true
+		return quotePrefix + leadingSpaces(content), quoteDepth, true
 	}
+	if isListContainerIndent(lines, index, indent, quoteDepth) {
+		return quotePrefix + leadingSpaces(content), quoteDepth, true
+	}
+	return "", 0, false
+}
+
+func isListContainerIndent(lines []string, index, indent, quoteDepth int) bool {
 	for previous := index - 1; previous >= 0; previous-- {
 		candidate := lineWithoutEnding(lines[previous])
-		if strings.TrimSpace(candidate) == "" {
+		_, content, depth := splitBlockquoteContainer(candidate)
+		if strings.TrimSpace(content) == "" {
 			continue
 		}
-		if contentIndent, ok := markdownListContentIndent(candidate); ok && contentIndent <= indent {
+		if depth != quoteDepth {
+			if depth < quoteDepth {
+				return false
+			}
+			continue
+		}
+		if contentIndent, ok := markdownListContentIndent(content); ok && contentIndent <= indent {
 			return true
 		}
-		if markdownIndentColumns(candidate) == 0 {
+		if markdownIndentColumns(content) == 0 {
 			return false
 		}
 	}
 	return false
+}
+
+func splitBlockquoteContainer(line string) (string, string, int) {
+	position := 0
+	depth := 0
+	for position < len(line) {
+		start := position
+		spaces := 0
+		for position < len(line) && line[position] == ' ' && spaces < 3 {
+			position++
+			spaces++
+		}
+		if position >= len(line) || line[position] != '>' {
+			position = start
+			break
+		}
+		position++
+		if position < len(line) && (line[position] == ' ' || line[position] == '\t') {
+			position++
+		}
+		depth++
+	}
+	return line[:position], line[position:], depth
+}
+
+func maskInlineCodeSpans(line string) string {
+	masked := []byte(line)
+	for start := 0; start < len(line); {
+		if line[start] != '`' {
+			start++
+			continue
+		}
+		run := 1
+		for start+run < len(line) && line[start+run] == '`' {
+			run++
+		}
+		closing := strings.Index(line[start+run:], strings.Repeat("`", run))
+		if closing < 0 {
+			start += run
+			continue
+		}
+		end := start + run + closing + run
+		for index := start; index < end; index++ {
+			masked[index] = ' '
+		}
+		start = end
+	}
+	return string(masked)
 }
 
 func markdownIndentColumns(line string) int {

@@ -120,6 +120,18 @@ func TestMultilineKatexFenceInsideCodeBlockIsNotRendered(t *testing.T) {
 	}
 }
 
+func TestMultilineKatexFenceInsideListCodeBlockIsNotRendered(t *testing.T) {
+	source := "- item\n\n    ```md\n    $$$\n    \\begin{aligned}\n    x &= 1\n    \\end{aligned}\n    $$$\n    ```"
+	rendered, _, err := RenderString(t.TempDir(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, rendered, "<code class=\"language-md\">$$$")
+	if strings.Contains(rendered, `class="katex-display"`) || strings.Contains(rendered, "KARTE_MATH_BLOCK") {
+		t.Fatalf("math inside a list-nested code fence must remain literal:\n%s", rendered)
+	}
+}
+
 func TestMultilineKatexFenceInsideRawHTMLCodeIsNotRendered(t *testing.T) {
 	for _, tag := range []string{"pre", "code"} {
 		t.Run(tag, func(t *testing.T) {
@@ -176,6 +188,30 @@ func TestMultilineKatexFenceInsideHTMLCommentIsNotRendered(t *testing.T) {
 		t.Fatalf("math fence inside an HTML comment must remain literal:\n%s", rendered)
 	}
 	assertContains(t, rendered, "<p>After</p>")
+}
+
+func TestMultilineKatexFenceInsideBlockquoteIsRendered(t *testing.T) {
+	source := "> $$$\n> \\begin{aligned}\n> x &= 1 \\\\\n> y &= 2\n> \\end{aligned}\n> $$$"
+	rendered, _, err := RenderString(t.TempDir(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	quoteStart := strings.Index(rendered, "<blockquote>")
+	quoteEnd := strings.Index(rendered, "</blockquote>")
+	mathAt := strings.Index(rendered, `class="katex-display"`)
+	if quoteStart < 0 || quoteEnd < 0 || mathAt < quoteStart || mathAt > quoteEnd || strings.Contains(rendered, `<p><div class="katex-display"`) {
+		t.Fatalf("blockquote math must remain a valid display block inside the quote:\n%s", rendered)
+	}
+}
+
+func TestInlineCodeHTMLTagDoesNotSuppressFollowingMath(t *testing.T) {
+	source := "Use `<code>` here.\n\n$$$\n\\begin{aligned}\nx &= 1\n\\end{aligned}\n$$$"
+	rendered, _, err := RenderString(t.TempDir(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, rendered, `<code>&lt;code&gt;</code>`)
+	assertContains(t, rendered, `class="katex-display"`)
 }
 
 func TestTopLevelIndentedMathFenceRemainsCode(t *testing.T) {

@@ -142,6 +142,9 @@ func (r *Renderer) render(root, baseDir, markdown string, hardwrap bool, css str
 	} else {
 		body = expandPageBreakDirectives(body)
 		content, err = markdownHTML(body, hardwrap)
+		if err == nil {
+			content, err = finalizeFigures(content)
+		}
 	}
 	if err != nil {
 		return "", fm, err
@@ -161,6 +164,7 @@ func (r *Renderer) render(root, baseDir, markdown string, hardwrap bool, css str
 	}
 	if !fm.Marp {
 		out = injectPaginationStyle(out)
+		out = injectFigureStyle(out)
 	}
 	return out, fm, nil
 }
@@ -333,7 +337,11 @@ func (r *Renderer) expandImportsRecursive(root, baseDir, s string, hardwrap bool
 	if firstErr != nil {
 		return out, firstErr
 	}
-	return r.expandCharts(root, baseDir, out)
+	charted, err := r.expandCharts(root, baseDir, out)
+	if err != nil {
+		return "", err
+	}
+	return r.expandFigureDirectives(root, baseDir, charted)
 }
 
 func parseAttrs(s string) map[string]string {

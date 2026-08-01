@@ -209,6 +209,29 @@ dash patterns. CSV paths use the same project-root and symlink safety boundary
 as imports, and invalid or missing numeric values fail the conversion with a
 row/column error.
 
+### Figures, tables, and cross references
+
+Use stable IDs for image figures, annotated Markdown tables, and charts:
+
+```md
+See @ref(overview), @ref(results), and @ref(profit).
+
+@figure(id="overview" src="assets/overview.svg" alt="Overview" caption="System overview" source="Internal model")
+
+@table(id="results" caption="Estimated results" source="Performance log")
+| Item | Value |
+| --- | ---: |
+| A | 10 |
+
+@chart(type="scatter" path="data.csv" x="x" y="y" id="profit" caption="Profit curve" source="Performance log")
+```
+
+Figures and tables have independent document-order numbering. Forward
+references are supported; unknown and duplicate IDs fail the render. Captions,
+optional `source`/`note` lines, and their figure/table are wrapped in one
+semantic `<figure>` so the pagination layer can keep the unit together.
+References written inside inline or fenced code stay literal.
+
 The lower-level `ExportMarp` and `ExportHTMLPDF` functions are available when
 the caller already owns the Markdown/HTML pipeline. The legacy
 `ExportPDFWithBinary` function remains a direct `wkhtmltopdf` compatibility

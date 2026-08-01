@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -63,7 +64,7 @@ func (e *PreflightError) Error() string {
 }
 
 func preflightRequested(options PreflightOptions) bool {
-	return options.Enabled || options.ExpectedPages > 0
+	return options.Enabled || options.ExpectedPages != 0
 }
 
 func runDocumentPreflight(ctx context.Context, htmlFile, pdfFile string, options PreflightOptions) (PreflightReport, error) {
@@ -71,6 +72,16 @@ func runDocumentPreflight(ctx context.Context, htmlFile, pdfFile string, options
 		ctx = context.Background()
 	}
 	report := PreflightReport{SchemaVersion: 1, PDF: pdfFile, Passed: true}
+	if options.ExpectedPages < 0 {
+		return report, fmt.Errorf("invalid expected pages %d (must be zero or greater)", options.ExpectedPages)
+	}
+	if options.ReportPath != "" {
+		reportPath, err := validatePreflightReportPath(options.ReportPath, htmlFile, pdfFile)
+		if err != nil {
+			return report, err
+		}
+		options.ReportPath = reportPath
+	}
 	report.Checks = append(report.Checks, checkHTMLAssets(htmlFile))
 	if !options.SkipRawTeXCheck {
 		report.Checks = append(report.Checks, checkHTMLRawTeX(htmlFile))
@@ -115,6 +126,34 @@ func writePreflightReport(path string, report PreflightReport) error {
 		return fmt.Errorf("write preflight report: %w", err)
 	}
 	return nil
+}
+
+func validatePreflightReportPath(path string, protectedPaths ...string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve preflight report path: %w", err)
+	}
+	abs = filepath.Clean(abs)
+	for _, protected := range protectedPaths {
+		protectedAbs, err := filepath.Abs(protected)
+		if err != nil {
+			return "", fmt.Errorf("resolve protected preflight path: %w", err)
+		}
+		protectedAbs = filepath.Clean(protectedAbs)
+		same := abs == protectedAbs
+		if runtime.GOOS == "windows" {
+			same = strings.EqualFold(abs, protectedAbs)
+		}
+		if !same {
+			reportInfo, reportErr := os.Stat(abs)
+			protectedInfo, protectedErr := os.Stat(protectedAbs)
+			same = reportErr == nil && protectedErr == nil && os.SameFile(reportInfo, protectedInfo)
+		}
+		if same {
+			return "", fmt.Errorf("preflight report path must not overwrite %s", protectedAbs)
+		}
+	}
+	return abs, nil
 }
 
 func checkHTMLAssets(htmlFile string) PreflightCheck {
@@ -170,7 +209,7 @@ func localAssetPath(base, reference string) (string, bool) {
 		return "", false
 	}
 	if parsed.Scheme == "file" {
-		return filepath.FromSlash(parsed.Path), true
+		return filePathFromURL(parsed, runtime.GOOS), true
 	}
 	baseURL, err := url.Parse(base)
 	if err != nil {
@@ -180,7 +219,25 @@ func localAssetPath(base, reference string) (string, bool) {
 	if resolved.Scheme != "file" {
 		return "", false
 	}
-	return filepath.FromSlash(resolved.Path), true
+	return filePathFromURL(resolved, runtime.GOOS), true
+}
+
+func filePathFromURL(parsed *url.URL, goos string) string {
+	path := parsed.Path
+	if goos == "windows" {
+		path = strings.ReplaceAll(path, "/", `\`)
+		if parsed.Host != "" {
+			return `\\` + parsed.Host + path
+		}
+		if len(path) >= 3 && path[0] == '\\' && path[2] == ':' {
+			return path[1:]
+		}
+		return path
+	}
+	if parsed.Host != "" {
+		path = "//" + parsed.Host + path
+	}
+	return filepath.FromSlash(path)
 }
 
 func checkHTMLRawTeX(htmlFile string) PreflightCheck {
@@ -429,7 +486,7 @@ func runPreflightTool(ctx context.Context, configured, name string, args ...stri
 func pageSizePoints(size string) (float64, float64, bool) {
 	dimensions := map[string][2]float64{
 		"a3": {841.89, 1190.55}, "a4": {595.28, 841.89}, "a5": {419.53, 595.28},
-		"b4": {728.50, 1031.81}, "b5": {498.90, 708.66}, "letter": {612, 792}, "legal": {612, 1008},
+		"b4": {708.66, 1000.63}, "b5": {498.90, 708.66}, "letter": {612, 792}, "legal": {612, 1008},
 	}
 	dimension, ok := dimensions[strings.ToLower(strings.TrimSpace(size))]
 	return dimension[0], dimension[1], ok

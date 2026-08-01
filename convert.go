@@ -79,6 +79,9 @@ func ConvertFile(ctx context.Context, input, output string, opts ConvertOptions)
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if opts.Preflight.ExpectedPages < 0 {
+		return FrontMatter{}, fmt.Errorf("invalid expected pages %d (must be zero or greater)", opts.Preflight.ExpectedPages)
+	}
 	inputAbs, err := filepath.Abs(input)
 	if err != nil {
 		return FrontMatter{}, fmt.Errorf("resolve input: %w", err)
@@ -193,9 +196,15 @@ func ConvertFile(ctx context.Context, input, output string, opts ConvertOptions)
 	}
 	if preflight.ExpectedPageSize == "" {
 		preflight.ExpectedPageSize = printout.Size
+		if preflight.ExpectedPageSize == "" {
+			preflight.ExpectedPageSize = "A4"
+		}
 	}
 	if preflight.ExpectedOrientation == "" {
 		preflight.ExpectedOrientation = printout.Orientation
+		if preflight.ExpectedOrientation == "" {
+			preflight.ExpectedOrientation = "portrait"
+		}
 	}
 	if preflight.ChromiumBinary == "" {
 		pdfBinary := opts.PDF.Binary
@@ -211,6 +220,11 @@ func ConvertFile(ctx context.Context, input, output string, opts ConvertOptions)
 		if preflight.ReportPath == "" {
 			preflight.ReportPath = outputAbs + ".preflight.json"
 		}
+		reportPath, err := validatePreflightReportPath(preflight.ReportPath, inputAbs, outputAbs)
+		if err != nil {
+			return renderedFM, err
+		}
+		preflight.ReportPath = reportPath
 		if _, err := runDocumentPreflight(ctx, tmpName, outputAbs, preflight); err != nil {
 			return renderedFM, err
 		}

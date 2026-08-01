@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -54,6 +55,79 @@ func TestHTMLPreflightDetectsMissingAssetsAndRawTeX(t *testing.T) {
 	raw := checkHTMLRawTeX(htmlFile)
 	if raw.Passed || !strings.Contains(raw.Detail, "$$$") {
 		t.Fatalf("raw TeX was not reported: %+v", raw)
+	}
+}
+
+func TestPreflightReportPathCannotOverwriteProtectedFiles(t *testing.T) {
+	root := t.TempDir()
+	input := filepath.Join(root, "book.md")
+	pdf := filepath.Join(root, "book.pdf")
+	writeFile(t, input, "# Book")
+	writeFile(t, pdf, "%PDF-1.4")
+	for _, protected := range []string{input, pdf} {
+		if _, err := validatePreflightReportPath(protected, input, pdf); err == nil || !strings.Contains(err.Error(), "must not overwrite") {
+			t.Fatalf("expected protected-path error for %s, got %v", protected, err)
+		}
+	}
+}
+
+func TestRunDocumentPreflightRejectsNegativeExpectedPages(t *testing.T) {
+	_, err := runDocumentPreflight(context.Background(), "book.html", "book.pdf", PreflightOptions{ExpectedPages: -1})
+	if err == nil || !strings.Contains(err.Error(), "invalid expected pages") {
+		t.Fatalf("expected negative page-count error, got %v", err)
+	}
+}
+
+func TestWindowsFileURLPreservesUNCHost(t *testing.T) {
+	parsed, err := url.Parse("file://server/share/image.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := filePathFromURL(parsed, "windows"), `\\server\share\image.png`; got != want {
+		t.Fatalf("UNC URL path = %q, want %q", got, want)
+	}
+}
+
+func TestPageSizePointsUsesCSSISOB4(t *testing.T) {
+	width, height, ok := pageSizePoints("B4")
+	if !ok || width != 708.66 || height != 1000.63 {
+		t.Fatalf("unexpected B4 dimensions: %.2f x %.2f, ok=%v", width, height, ok)
+	}
+}
+
+func TestConvertPreflightValidatesDefaultA4PageSize(t *testing.T) {
+	requireShell(t)
+	root := t.TempDir()
+	input := filepath.Join(root, "book.md")
+	output := filepath.Join(root, "book.pdf")
+	writeFile(t, input, "# Book")
+	pdfBinary := filepath.Join(root, "chromium-pdf")
+	writeFile(t, pdfBinary, `#!/bin/sh
+for arg in "$@"; do
+  case "$arg" in
+    --print-to-pdf=*)
+      output=${arg#*=}
+      printf '%%PDF-1.4\n%%%%EOF\n' > "$output"
+      exit 0
+      ;;
+  esac
+done
+exit 2
+`)
+	if err := os.Chmod(pdfBinary, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	options := fakePreflightOptions(t, root)
+	options.ReportPath = filepath.Join(root, "report.json")
+	options.PDFInfoBinary = fakeTool(t, root, "pdfinfo-letter", "Pages: 1\nPage size: 612 x 792 pts\n")
+	_, err := ConvertFile(context.Background(), input, output, ConvertOptions{
+		Root:      root,
+		PDF:       PDFOptions{Engine: "chromium", Binary: pdfBinary},
+		Preflight: options,
+	})
+	var preflightErr *PreflightError
+	if !errors.As(err, &preflightErr) || !strings.Contains(err.Error(), "expected A4 portrait") {
+		t.Fatalf("expected default A4 page-size failure, got %v", err)
 	}
 }
 

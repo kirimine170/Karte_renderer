@@ -71,6 +71,7 @@ const fallbackLayout = `<!doctype html>
 var defaultRenderer = NewRenderer(OSFileSystem{})
 var fmRe = regexp.MustCompile(`(?s)\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\z)`)
 var importRe = regexp.MustCompile(`(?m)^@import\(([^)]*)\)[ \t]*\r?$`)
+var rawHTMLCodeOpenRe = regexp.MustCompile(`(?i)<(pre|code)(?:\s[^>]*)?>`)
 
 // RenderMarkdown renders a Markdown file below root, returning HTML and front matter.
 func RenderMarkdown(root string, path string) (string, FrontMatter, error) {
@@ -234,6 +235,7 @@ func frontMatterStringList(value interface{}) ([]string, error) {
 }
 
 func markdownHTML(s string, hardwrap bool) (string, error) {
+	protected, mathBlocks := protectFencedDisplayMath(s)
 	rendererOptions := []goldmark.Option{
 		goldmark.WithExtensions(
 			extension.GFM,
@@ -247,10 +249,189 @@ func markdownHTML(s string, hardwrap bool) (string, error) {
 	}
 	md := goldmark.New(rendererOptions...)
 	var out bytes.Buffer
-	if err := md.Convert([]byte(s), &out); err != nil {
+	if err := md.Convert([]byte(protected), &out); err != nil {
 		return "", fmt.Errorf("render markdown: %w", err)
 	}
-	return processKaTeX(out.String()), nil
+	return processKaTeX(restoreFencedDisplayMath(out.String(), mathBlocks)), nil
+}
+
+type fencedDisplayMath struct {
+	placeholder string
+	expression  string
+}
+
+// protectFencedDisplayMath removes Karte's multiline $$$ blocks before
+// Goldmark can interpret TeX control characters as Markdown. The placeholders
+// are HTML comments so they survive the Markdown pass without introducing an
+// invalid paragraph around the restored block element.
+func protectFencedDisplayMath(source string) (string, []fencedDisplayMath) {
+	lines := strings.SplitAfter(source, "\n")
+	prefix := "KARTE_MATH_BLOCK"
+	for strings.Contains(source, prefix) {
+		prefix += "_"
+	}
+
+	var out strings.Builder
+	blocks := make([]fencedDisplayMath, 0)
+	codeFence := byte(0)
+	codeFenceLength := 0
+	rawHTMLCodeContainer := ""
+	for i := 0; i < len(lines); {
+		line := lineWithoutEnding(lines[i])
+		if codeFence != 0 {
+			out.WriteString(lines[i])
+			if isClosingMarkdownFence(line, codeFence, codeFenceLength) {
+				codeFence = 0
+				codeFenceLength = 0
+			}
+			i++
+			continue
+		}
+		if rawHTMLCodeContainer != "" {
+			out.WriteString(lines[i])
+			if closesRawHTMLCodeContainer(line, rawHTMLCodeContainer) {
+				rawHTMLCodeContainer = ""
+			}
+			i++
+			continue
+		}
+		if marker, length, ok := openingMarkdownFence(line); ok {
+			codeFence = marker
+			codeFenceLength = length
+			out.WriteString(lines[i])
+			i++
+			continue
+		}
+		if container := openingRawHTMLCodeContainer(line); container != "" {
+			rawHTMLCodeContainer = container
+			out.WriteString(lines[i])
+			i++
+			continue
+		}
+		if !isDisplayMathFence(line) {
+			out.WriteString(lines[i])
+			i++
+			continue
+		}
+
+		closing := -1
+		for j := i + 1; j < len(lines); j++ {
+			if isDisplayMathFence(lineWithoutEnding(lines[j])) {
+				closing = j
+				break
+			}
+		}
+		if closing < 0 {
+			out.WriteString(lines[i])
+			i++
+			continue
+		}
+
+		var expression strings.Builder
+		for j := i + 1; j < closing; j++ {
+			expression.WriteString(lines[j])
+		}
+		placeholder := fmt.Sprintf("<!--%s_%d-->", prefix, len(blocks))
+		blocks = append(blocks, fencedDisplayMath{
+			placeholder: placeholder,
+			expression:  strings.TrimSpace(expression.String()),
+		})
+		out.WriteString(leadingSpaces(line))
+		out.WriteString(placeholder)
+		out.WriteString(lineEnding(lines[closing]))
+		i = closing + 1
+	}
+	return out.String(), blocks
+}
+
+func openingRawHTMLCodeContainer(line string) string {
+	match := rawHTMLCodeOpenRe.FindStringSubmatchIndex(line)
+	if match == nil {
+		return ""
+	}
+	tag := strings.ToLower(line[match[2]:match[3]])
+	if closesRawHTMLCodeContainer(line[match[1]:], tag) {
+		return ""
+	}
+	return tag
+}
+
+func closesRawHTMLCodeContainer(line, tag string) bool {
+	lower := strings.ToLower(line)
+	return strings.Contains(lower, "</"+tag+">") || strings.Contains(lower, "</"+tag+" >")
+}
+
+func leadingSpaces(line string) string {
+	spaces := 0
+	for spaces < len(line) && line[spaces] == ' ' {
+		spaces++
+	}
+	return line[:spaces]
+}
+
+func restoreFencedDisplayMath(rendered string, blocks []fencedDisplayMath) string {
+	for _, block := range blocks {
+		escaped := html.EscapeString(block.expression)
+		replacement := `<div class="katex-display" data-katex="` + escaped + `">` + escaped + `</div>`
+		rendered = strings.ReplaceAll(rendered, block.placeholder, replacement)
+	}
+	return rendered
+}
+
+func lineWithoutEnding(line string) string {
+	line = strings.TrimSuffix(line, "\n")
+	return strings.TrimSuffix(line, "\r")
+}
+
+func lineEnding(line string) string {
+	if strings.HasSuffix(line, "\r\n") {
+		return "\r\n"
+	}
+	if strings.HasSuffix(line, "\n") {
+		return "\n"
+	}
+	return ""
+}
+
+func markdownFencePrefix(line string) string {
+	spaces := 0
+	for spaces < len(line) && line[spaces] == ' ' {
+		spaces++
+	}
+	if spaces > 3 {
+		return ""
+	}
+	return line[spaces:]
+}
+
+func openingMarkdownFence(line string) (byte, int, bool) {
+	line = markdownFencePrefix(line)
+	if line == "" || (line[0] != '`' && line[0] != '~') {
+		return 0, 0, false
+	}
+	marker := line[0]
+	length := 0
+	for length < len(line) && line[length] == marker {
+		length++
+	}
+	return marker, length, length >= 3
+}
+
+func isClosingMarkdownFence(line string, marker byte, minimumLength int) bool {
+	line = markdownFencePrefix(line)
+	if line == "" || line[0] != marker {
+		return false
+	}
+	length := 0
+	for length < len(line) && line[length] == marker {
+		length++
+	}
+	return length >= minimumLength && strings.TrimSpace(line[length:]) == ""
+}
+
+func isDisplayMathFence(line string) bool {
+	line = markdownFencePrefix(line)
+	return line != "" && strings.TrimSpace(line) == "$$$"
 }
 
 func (r *Renderer) expandImports(root, baseDir, s string, hardwrap bool) (string, error) {

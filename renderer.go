@@ -511,7 +511,10 @@ func (r *Renderer) expandImportsRecursive(root, baseDir, s string, hardwrap bool
 			return ""
 		}
 	})
-	return out, firstErr
+	if firstErr != nil {
+		return out, firstErr
+	}
+	return r.expandCharts(root, baseDir, out)
 }
 
 func parseAttrs(s string) map[string]string {

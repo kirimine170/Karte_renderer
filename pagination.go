@@ -12,7 +12,7 @@ const paginationStyle = `@media print{
 .karte-page-break,.karte-break-before{display:block;height:0;margin:0;border:0;break-before:page;page-break-before:always;}
 .karte-page-break-after,.karte-break-after{display:block;height:0;margin:0;border:0;break-after:page;page-break-after:always;}
 h1,h2,h3,h4,h5,h6,.karte-keep-with-next{break-after:avoid-page;page-break-after:avoid;}
-figure,figcaption,img,table,pre,blockquote,.katex-display,.karte-keep-together{break-inside:avoid-page;page-break-inside:avoid;}
+figure,figcaption,img,table,pre,blockquote,.katex-display,.karte-chart,.karte-keep-together{break-inside:avoid-page;page-break-inside:avoid;}
 figcaption,caption{break-before:avoid-page;page-break-before:avoid;}
 thead{display:table-header-group;}
 }`

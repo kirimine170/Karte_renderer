@@ -54,7 +54,7 @@ func TestPaginationStyleProvidesKeepAndBreakRules(t *testing.T) {
 		`break-before:page`,
 		`break-after:page`,
 		`h1,h2,h3,h4,h5,h6,.karte-keep-with-next{break-after:avoid-page`,
-		`figure,figcaption,img,table,pre,blockquote,.katex-display,.karte-keep-together{break-inside:avoid-page`,
+		`figure,figcaption,img,table,pre,blockquote,.katex-display,.karte-chart,.karte-keep-together{break-inside:avoid-page`,
 		`thead{display:table-header-group;}`,
 	} {
 		assertContains(t, rendered, want)

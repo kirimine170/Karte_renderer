@@ -193,6 +193,22 @@ display equations when the paged-media engine can honor the constraint.
 Trusted HTML/templates may use `.karte-break-before`, `.karte-break-after`,
 `.karte-keep-with-next`, or `.karte-keep-together` directly.
 
+### Deterministic CSV charts
+
+`@chart` generates an inline, responsive SVG during rendering. It does not
+load JavaScript, fonts, or chart services at runtime:
+
+```md
+@chart(type="scatter" path="data/performances.csv" x="attendance" y="profit" series="venue" title="Attendance and profit" xLabel="Attendance" xUnit="people" yLabel="Profit" yUnit="JPY" note="Source: performance log")
+```
+
+The initial chart types are `scatter`, `line`, `bar`, and `histogram`.
+`width`/`height` set the SVG view box and `bins` controls a histogram. A
+`series` column produces a stable legend with monochrome-safe marker shapes and
+dash patterns. CSV paths use the same project-root and symlink safety boundary
+as imports, and invalid or missing numeric values fail the conversion with a
+row/column error.
+
 The lower-level `ExportMarp` and `ExportHTMLPDF` functions are available when
 the caller already owns the Markdown/HTML pipeline. The legacy
 `ExportPDFWithBinary` function remains a direct `wkhtmltopdf` compatibility

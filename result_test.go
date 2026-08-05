@@ -244,6 +244,29 @@ func TestRenderResultExcludesReferencesPartiallyConsumedByMath(t *testing.T) {
 	}
 }
 
+func TestRenderResultKeepsReferencesWithMathOnlyInLabels(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "notes.md"), "notes")
+	writeFile(t, filepath.Join(root, "plot.png"), "plot")
+	result, err := RenderStringResult(root, `[price $x$](notes.md)
+
+![plot $x$](plot.png)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLinks := []RenderLink{{Kind: LinkInternal, Target: "notes.md", Path: "notes.md"}}
+	if !reflect.DeepEqual(result.Metadata.Links, wantLinks) {
+		t.Fatalf("links = %#v, want %#v", result.Metadata.Links, wantLinks)
+	}
+	wantAssets := []RenderAsset{{Reference: "plot.png", Path: "plot.png", Status: AssetAvailable}}
+	if !reflect.DeepEqual(result.Metadata.Assets, wantAssets) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, wantAssets)
+	}
+	if len(result.Metadata.Diagnostics) != 0 {
+		t.Fatalf("unexpected diagnostics: %#v", result.Metadata.Diagnostics)
+	}
+}
+
 func TestRenderResultNormalizesMathDelimiters(t *testing.T) {
 	result, err := RenderStringResult(t.TempDir(), `&#36;![numeric](numeric.png)$
 

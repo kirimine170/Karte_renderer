@@ -228,7 +228,7 @@ func (c *metadataCollector) collectReferences(baseDir, markdown string) {
 		}
 		switch node.(type) {
 		case *ast.Image, *ast.Link, *ast.AutoLink:
-			if sourceRangeOverlapsAny(referenceSourceRange(node, source, len(references)), mathRanges) {
+			if referenceOverlapsMath(node, source, len(references), mathRanges) {
 				return ast.WalkContinue, nil
 			}
 		}
@@ -473,6 +473,67 @@ func referenceSourceRange(node ast.Node, source []byte, sequence int) sourceRang
 		end = len(source)
 	}
 	return sourceRange{start: start, end: end}
+}
+
+func referenceOverlapsMath(node ast.Node, source []byte, sequence int, mathRanges []sourceRange) bool {
+	referenceRange := referenceSourceRange(node, source, sequence)
+	if sourceOffsetInRanges(referenceRange.start, mathRanges) {
+		return true
+	}
+	if _, ok := node.(*ast.AutoLink); ok {
+		return sourceRangeOverlapsAny(referenceRange, mathRanges)
+	}
+	if reference := referenceLink(node); reference != nil && reference.Type == ast.ReferenceLinkShortcut {
+		return false
+	}
+	suffixStart := referenceLabelEnd(node, source, referenceRange)
+	return suffixStart < referenceRange.end && sourceRangeOverlapsAny(sourceRange{start: suffixStart, end: referenceRange.end}, mathRanges)
+}
+
+func referenceLink(node ast.Node) *ast.ReferenceLink {
+	switch node := node.(type) {
+	case *ast.Image:
+		return node.Reference
+	case *ast.Link:
+		return node.Reference
+	default:
+		return nil
+	}
+}
+
+func referenceLabelEnd(node ast.Node, source []byte, referenceRange sourceRange) int {
+	searchStart := referenceRange.start + 1
+	if referenceRange.start < len(source) && source[referenceRange.start] == '!' {
+		searchStart++
+	}
+	_ = ast.Walk(node, func(child ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering || child == node {
+			return ast.WalkContinue, nil
+		}
+		switch child := child.(type) {
+		case *ast.Text:
+			if child.Segment.Stop > searchStart {
+				searchStart = child.Segment.Stop
+			}
+		case *ast.RawHTML:
+			for i := 0; i < child.Segments.Len(); i++ {
+				if stop := child.Segments.At(i).Stop; stop > searchStart {
+					searchStart = stop
+				}
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+	for i := searchStart; i < referenceRange.end && i < len(source); i++ {
+		if source[i] == '\\' {
+			i++
+			continue
+		}
+		if source[i] == ']' {
+			return i + 1
+		}
+	}
+	return referenceRange.end
 }
 
 func sourceRangeOverlapsAny(candidate sourceRange, ranges []sourceRange) bool {

@@ -290,6 +290,14 @@ Marp continues to use its own theme options.
 `{{KATEX}}` is populated only when math is present. Layouts without that
 placeholder receive the runtime automatically before `</head>`.
 
+The versioned Karte Format package contract groups a Markdown layout and
+ordered stylesheets, Marp themes, and shared assets under one local directory.
+See [the v0.1 specification](docs/karte-format-v0.1.md), its
+[JSON Schema](docs/karte-format-v0.1.schema.json), and the
+[minimal package template](examples/karte-format-v0.1). The Go API exposes
+`ParseFormatManifest` and `LoadFormatManifest` for strict manifest validation;
+package application through conversion options is tracked separately.
+
 ```md
 @import(type="md" path="partials/intro.md")
 @import(type="csv" path="data/results.csv" select="Name,Score")

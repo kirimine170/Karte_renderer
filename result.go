@@ -585,11 +585,7 @@ func referenceOverlapsMath(node ast.Node, source []byte, sequence int, mathRange
 		destinationRange, ok := inlineDestinationSourceRange(source, labelEnd, referenceRange.end)
 		return ok && sourceRangeOverlapsAny(destinationRange, mathRanges)
 	}
-	if reference.Type == ast.ReferenceLinkShortcut {
-		return false
-	}
-	suffixStart := referenceLabelEnd(node, source, referenceRange)
-	return suffixStart < referenceRange.end && sourceRangeOverlapsAny(sourceRange{start: suffixStart, end: referenceRange.end}, mathRanges)
+	return false
 }
 
 func inlineDestinationSourceRange(source []byte, labelEnd, referenceEnd int) (sourceRange, bool) {

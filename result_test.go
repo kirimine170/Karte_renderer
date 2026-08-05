@@ -287,6 +287,29 @@ func TestRenderResultKeepsReferencesWithMathOnlyInTitles(t *testing.T) {
 	}
 }
 
+func TestRenderResultKeepsReferenceIDsWithMath(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "notes.md"), "notes")
+	writeFile(t, filepath.Join(root, "plot.png"), "plot")
+	result, err := RenderStringResult(root, `[docs][$id$]
+
+![plot][$image$]
+
+[$id$]: notes.md
+[$image$]: plot.png`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLinks := []RenderLink{{Kind: LinkInternal, Target: "notes.md", Path: "notes.md"}}
+	if !reflect.DeepEqual(result.Metadata.Links, wantLinks) {
+		t.Fatalf("links = %#v, want %#v", result.Metadata.Links, wantLinks)
+	}
+	wantAssets := []RenderAsset{{Reference: "plot.png", Path: "plot.png", Status: AssetAvailable}}
+	if !reflect.DeepEqual(result.Metadata.Assets, wantAssets) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, wantAssets)
+	}
+}
+
 func TestRenderResultCollectsNestedInlineReferences(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "docs.md"), "docs")

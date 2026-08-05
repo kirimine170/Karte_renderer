@@ -24,8 +24,9 @@ const (
 )
 
 var (
-	formatNameRe    = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$`)
-	formatVersionRe = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
+	formatNameRe      = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$`)
+	formatVersionRe   = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
+	formatURISchemeRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*:`)
 )
 
 // FormatManifest is the v0.1 contract stored in karte-format.yaml.
@@ -247,7 +248,7 @@ func validateFormatPath(field, value string) error {
 	if strings.Contains(value, "\\") {
 		return fmt.Errorf("%s must use forward slashes", field)
 	}
-	if path.IsAbs(value) || hasWindowsDrivePrefix(value) || strings.Contains(value, "://") {
+	if path.IsAbs(value) || hasWindowsDrivePrefix(value) || formatURISchemeRe.MatchString(value) {
 		return fmt.Errorf("%s must be a package-relative local path", field)
 	}
 	cleaned := path.Clean(value)

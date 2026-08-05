@@ -157,6 +157,42 @@ func TestParseFormatManifestRejectsNonStringScalars(t *testing.T) {
 	}
 }
 
+func TestParseFormatManifestUsesSemVer200(t *testing.T) {
+	valid := []string{
+		"0.0.0",
+		"1.2.3",
+		"1.2.3-alpha",
+		"1.2.3-alpha.1",
+		"1.2.3-0A",
+		"1.2.3+build.7",
+		"1.2.3-alpha.1+build.7",
+	}
+	for _, version := range valid {
+		source := strings.Replace(validFormatManifest, "version: 1.0.0", "version: "+version, 1)
+		if _, err := ParseFormatManifest([]byte(source)); err != nil {
+			t.Errorf("valid version %q: %v", version, err)
+		}
+	}
+
+	invalid := []string{
+		"01.0.0",
+		"1.01.0",
+		"1.0.01",
+		"1.0.0-alpha..1",
+		"1.0.0-01",
+		"1.0.0-",
+		"1.0.0+build..7",
+		"1.0.0+",
+	}
+	for _, version := range invalid {
+		source := strings.Replace(validFormatManifest, "version: 1.0.0", "version: "+version, 1)
+		_, err := ParseFormatManifest([]byte(source))
+		if err == nil || !strings.Contains(err.Error(), "semantic version") {
+			t.Errorf("invalid version %q: %v", version, err)
+		}
+	}
+}
+
 func TestParseFormatManifestRejectsUnsafePaths(t *testing.T) {
 	tests := []struct {
 		name string
@@ -173,6 +209,10 @@ func TestParseFormatManifestRejectsUnsafePaths(t *testing.T) {
 		{name: "leading space", path: `" markdown/layout.html"`, want: "surrounding whitespace"},
 		{name: "trailing space", path: `"markdown/layout.html "`, want: "surrounding whitespace"},
 		{name: "NUL", path: `"markdown\0layout.html"`, want: "contains a NUL byte"},
+		{name: "leading dot segment", path: "./markdown/layout.html", want: "canonical package path"},
+		{name: "nested dot segment", path: "markdown/./layout.html", want: "canonical package path"},
+		{name: "empty segment", path: "markdown//layout.html", want: "canonical package path"},
+		{name: "trailing slash", path: "markdown/layout.html/", want: "canonical package path"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

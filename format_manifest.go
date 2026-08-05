@@ -25,7 +25,7 @@ const (
 
 var (
 	formatNameRe    = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$`)
-	formatVersionRe = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$`)
+	formatVersionRe = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
 )
 
 // FormatManifest is the v0.1 contract stored in karte-format.yaml.
@@ -253,6 +253,9 @@ func validateFormatPath(field, value string) error {
 	cleaned := path.Clean(value)
 	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
 		return fmt.Errorf("%s escapes the format package", field)
+	}
+	if cleaned != value {
+		return fmt.Errorf("%s must be a canonical package path", field)
 	}
 	return nil
 }

@@ -58,8 +58,10 @@ styles. Theme files are registered in manifest order.
 
 Manifest paths use `/` separators and are relative to the package directory.
 Absolute paths, URLs, Windows drive paths, backslashes, empty paths, and paths
-that normalize outside the package are invalid. Filesystem resolution must also
-reject symlinks that escape the package before a referenced file is used.
+that normalize outside the package are invalid. Paths must already be canonical:
+`.` segments, empty segments, and trailing slashes are not accepted. Filesystem
+resolution must also reject symlinks that escape the package before a referenced
+file is used.
 
 Remote URLs, registries, downloads, and archive packages are outside v0.1.
 

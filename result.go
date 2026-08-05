@@ -304,10 +304,11 @@ func mathSourceRanges(source []byte, document ast.Node) []sourceRange {
 	}
 	inlineSource := append([]byte(nil), normalized.value...)
 	for _, match := range displayMatches {
-		for i := match[0]; i < match[1]; i++ {
-			if inlineSource[i] != '\n' && inlineSource[i] != '\r' {
-				inlineSource[i] = ' '
-			}
+		for i := match[0]; i < match[0]+3; i++ {
+			inlineSource[i] = ' '
+		}
+		for i := match[1] - 3; i < match[1]; i++ {
+			inlineSource[i] = ' '
 		}
 	}
 	for _, match := range katexInlineRe.FindAllIndex(inlineSource, -1) {

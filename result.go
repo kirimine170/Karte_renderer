@@ -312,7 +312,10 @@ func mathSourceRanges(source []byte, document ast.Node) []sourceRange {
 		}
 	}
 	for _, match := range katexInlineRe.FindAllIndex(inlineSource, -1) {
-		ranges = append(ranges, normalized.sourceRange(match))
+		sourceMatch := normalized.sourceRange(match)
+		if !sourceOffsetInRanges(sourceMatch.start, ranges) {
+			ranges = append(ranges, sourceMatch)
+		}
 	}
 	sort.Slice(ranges, func(i, j int) bool { return ranges[i].start < ranges[j].start })
 	return ranges

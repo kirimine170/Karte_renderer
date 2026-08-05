@@ -605,7 +605,15 @@ func referenceOverlapsMath(node ast.Node, source []byte, sequence int, mathRange
 	if reference == nil {
 		labelEnd := referenceLabelEnd(node, source, referenceRange)
 		destinationRange, ok := inlineDestinationSourceRange(source, labelEnd, referenceRange.end)
-		return ok && sourceRangeOverlapsAny(destinationRange, mathRanges)
+		if !ok {
+			return false
+		}
+		for _, mathRange := range mathRanges {
+			if mathRange.start >= labelEnd && destinationRange.start < mathRange.end && mathRange.start < destinationRange.end {
+				return true
+			}
+		}
+		return false
 	}
 	return false
 }

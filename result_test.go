@@ -452,6 +452,23 @@ func TestRenderResultSeparatesNestedReferenceMathRanges(t *testing.T) {
 	}
 }
 
+func TestRenderResultPreservesOuterLinkWhenNestedImageMathIsConsumed(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "page.md"), "page")
+	writeFile(t, filepath.Join(root, "foo$bar.png"), "plot")
+	result, err := RenderStringResult(root, `[![alt](foo$bar.png)](page.md) tail $`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLinks := []RenderLink{{Kind: LinkInternal, Target: "page.md", Path: "page.md"}}
+	if !reflect.DeepEqual(result.Metadata.Links, wantLinks) {
+		t.Fatalf("links = %#v, want %#v", result.Metadata.Links, wantLinks)
+	}
+	if len(result.Metadata.Assets) != 0 || len(result.Metadata.Diagnostics) != 0 {
+		t.Fatalf("unexpected metadata: assets=%#v diagnostics=%#v", result.Metadata.Assets, result.Metadata.Diagnostics)
+	}
+}
+
 func TestRenderResultNormalizesMathDelimiters(t *testing.T) {
 	result, err := RenderStringResult(t.TempDir(), `&#36;![numeric](numeric.png)$
 

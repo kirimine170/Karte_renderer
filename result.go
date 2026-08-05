@@ -302,11 +302,16 @@ func mathSourceRanges(source []byte, document ast.Node) []sourceRange {
 	for _, match := range displayMatches {
 		ranges = append(ranges, normalized.sourceRange(match))
 	}
-	for _, match := range katexInlineRe.FindAllIndex(normalized.value, -1) {
-		sourceMatch := normalized.sourceRange(match)
-		if !sourceRangeOverlapsAny(sourceMatch, ranges) {
-			ranges = append(ranges, sourceMatch)
+	inlineSource := append([]byte(nil), normalized.value...)
+	for _, match := range displayMatches {
+		for i := match[0]; i < match[1]; i++ {
+			if inlineSource[i] != '\n' && inlineSource[i] != '\r' {
+				inlineSource[i] = ' '
+			}
 		}
+	}
+	for _, match := range katexInlineRe.FindAllIndex(inlineSource, -1) {
+		ranges = append(ranges, normalized.sourceRange(match))
 	}
 	sort.Slice(ranges, func(i, j int) bool { return ranges[i].start < ranges[j].start })
 	return ranges

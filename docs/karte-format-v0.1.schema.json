@@ -42,7 +42,8 @@
       "properties": {
         "defaultTheme": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "\\S"
         },
         "themes": {
           "type": "array",

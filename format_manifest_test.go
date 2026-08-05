@@ -114,6 +114,7 @@ func TestParseFormatManifestRejectsInvalidContracts(t *testing.T) {
 		{name: "missing layout", replace: "  layout: markdown/layout.html\n", want: "markdown.layout is required"},
 		{name: "empty styles", replace: "  styles:\n    - markdown/base.css\n    - markdown/print.css", with: "  styles: []", want: "markdown.styles must contain"},
 		{name: "missing default theme", replace: "  defaultTheme: karte", with: "  defaultTheme: ''", want: "marp.defaultTheme is required"},
+		{name: "blank default theme", replace: "  defaultTheme: karte", with: `  defaultTheme: "  "`, want: "marp.defaultTheme is required"},
 		{name: "empty themes", replace: "  themes:\n    - marp/karte.css", with: "  themes: []", want: "marp.themes must contain"},
 		{name: "missing assets", replace: "  directory: assets\n", want: "assets.directory is required"},
 		{name: "unknown field", replace: "name: karte-default", with: "name: karte-default\ndisplayName: Karte", want: "field displayName not found"},

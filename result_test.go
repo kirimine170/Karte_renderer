@@ -542,6 +542,20 @@ func TestRenderResultExcludesOuterLinkWhenHrefAndNestedImageContainDollars(t *te
 	}
 }
 
+func TestRenderResultIgnoresNestedLinkDestinationsInImageAltText(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "image$src.png"), "plot")
+	writeFile(t, filepath.Join(root, "foo$bar.md"), "page")
+	result, err := RenderStringResult(root, `![alt [inner](foo$bar.md)](image$src.png)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantAssets := []RenderAsset{{Reference: "image$src.png", Path: "image$src.png", Status: AssetAvailable}}
+	if !reflect.DeepEqual(result.Metadata.Assets, wantAssets) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, wantAssets)
+	}
+}
+
 func TestRenderResultKeepsDollarReferencesSeparatedByRenderedNewlines(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "foo$bar.md"), "page")

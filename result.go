@@ -659,9 +659,30 @@ func referenceDestinationHasRenderedMathPair(node ast.Node, source []byte) bool 
 func referenceRenderedMathText(node ast.Node, source, labelSource []byte) string {
 	var rendered strings.Builder
 	var writeNode func(ast.Node)
+	var writeAltNode func(ast.Node)
 	writeChildren := func(parent ast.Node) {
 		for child := parent.FirstChild(); child != nil; child = child.NextSibling() {
 			writeNode(child)
+		}
+	}
+	writeAltChildren := func(parent ast.Node) {
+		for child := parent.FirstChild(); child != nil; child = child.NextSibling() {
+			writeAltNode(child)
+		}
+	}
+	writeAltNode = func(current ast.Node) {
+		switch current := current.(type) {
+		case *ast.CodeSpan:
+			// processKaTeX protects code contents before Markdown flattens alt text.
+		case *ast.Text:
+			rendered.WriteString(normalizeMarkdownDestination(string(current.Segment.Value(labelSource))))
+			if current.SoftLineBreak() || current.HardLineBreak() {
+				rendered.WriteByte('\n')
+			}
+		case *ast.String:
+			rendered.WriteString(normalizeMarkdownDestination(string(current.Value)))
+		default:
+			writeAltChildren(current)
 		}
 	}
 	writeNode = func(current ast.Node) {
@@ -672,7 +693,7 @@ func referenceRenderedMathText(node ast.Node, source, labelSource []byte) string
 			writeChildren(current)
 		case *ast.Image:
 			rendered.WriteString(normalizeMarkdownDestination(string(current.Destination)))
-			writeChildren(current)
+			writeAltChildren(current)
 			rendered.WriteString(normalizeMarkdownDestination(string(current.Title)))
 		case *ast.AutoLink:
 			label := string(current.Label(source))

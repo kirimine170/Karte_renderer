@@ -330,6 +330,40 @@ func TestRenderResultKeepsReferencesBeforeSameLineDisplayMath(t *testing.T) {
 	}
 }
 
+func TestRenderResultKeepsReferencesWithProtectedLabelDollars(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "foo$bar.md"), "notes")
+	writeFile(t, filepath.Join(root, "foo$bar.png"), "plot")
+
+	tests := []struct {
+		name     string
+		markdown string
+	}{
+		{name: "code span", markdown: "[docs `$`](foo$bar.md)\n\n![plot `$`](foo$bar.png)"},
+		{name: "comment", markdown: "[docs <!-- $ -->](foo$bar.md)\n\n![plot <!-- $ -->](foo$bar.png)"},
+		{name: "code element", markdown: "[docs <code>$</code>](foo$bar.md)\n\n![plot <code>$</code>](foo$bar.png)"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := RenderStringResult(root, test.markdown)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantLinks := []RenderLink{{Kind: LinkInternal, Target: "foo$bar.md", Path: "foo$bar.md"}}
+			if !reflect.DeepEqual(result.Metadata.Links, wantLinks) {
+				t.Fatalf("links = %#v, want %#v", result.Metadata.Links, wantLinks)
+			}
+			wantAssets := []RenderAsset{{Reference: "foo$bar.png", Path: "foo$bar.png", Status: AssetAvailable}}
+			if !reflect.DeepEqual(result.Metadata.Assets, wantAssets) {
+				t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, wantAssets)
+			}
+			if len(result.Metadata.Diagnostics) != 0 {
+				t.Fatalf("unexpected diagnostics: %#v", result.Metadata.Diagnostics)
+			}
+		})
+	}
+}
+
 func TestRenderResultExcludesReferencesInsideInlineMathSpanningDisplayMath(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "notes.md"), "notes")

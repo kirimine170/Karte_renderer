@@ -278,26 +278,8 @@ type sourceRange struct {
 
 func mathSourceRanges(source []byte, document ast.Node) []sourceRange {
 	masked := append([]byte(nil), source...)
-	protectedRanges := codeSourceRanges(document)
-	for _, match := range katexProtectedCommentRe.FindAllIndex(source, -1) {
-		if !sourcePositionEscaped(source, match[0]) {
-			protectedRanges = append(protectedRanges, sourceRange{start: match[0], end: match[1]})
-		}
-	}
-	for _, re := range []*regexp.Regexp{katexProtectedPreRe, katexProtectedCodeRe} {
-		for _, match := range re.FindAllIndex(source, -1) {
-			protectedRanges = append(protectedRanges, sourceRange{start: match[0], end: match[1]})
-		}
-	}
-	for _, protectedRange := range protectedRanges {
-		start := max(protectedRange.start, 0)
-		end := min(protectedRange.end, len(masked))
-		for i := start; i < end; i++ {
-			if masked[i] != '\n' && masked[i] != '\r' {
-				masked[i] = ' '
-			}
-		}
-	}
+	protectedRanges := katexProtectedSourceRanges(source, document)
+	maskSourceRanges(masked, protectedRanges)
 
 	rawHTMLRanges := rawHTMLSourceRanges(document)
 	sort.Slice(rawHTMLRanges, func(i, j int) bool { return rawHTMLRanges[i].start < rawHTMLRanges[j].start })
@@ -324,6 +306,33 @@ func mathSourceRanges(source []byte, document ast.Node) []sourceRange {
 	}
 	sort.Slice(ranges, func(i, j int) bool { return ranges[i].start < ranges[j].start })
 	return ranges
+}
+
+func katexProtectedSourceRanges(source []byte, document ast.Node) []sourceRange {
+	protectedRanges := codeSourceRanges(document)
+	for _, match := range katexProtectedCommentRe.FindAllIndex(source, -1) {
+		if !sourcePositionEscaped(source, match[0]) {
+			protectedRanges = append(protectedRanges, sourceRange{start: match[0], end: match[1]})
+		}
+	}
+	for _, re := range []*regexp.Regexp{katexProtectedPreRe, katexProtectedCodeRe} {
+		for _, match := range re.FindAllIndex(source, -1) {
+			protectedRanges = append(protectedRanges, sourceRange{start: match[0], end: match[1]})
+		}
+	}
+	return protectedRanges
+}
+
+func maskSourceRanges(source []byte, ranges []sourceRange) {
+	for _, protectedRange := range ranges {
+		start := max(protectedRange.start, 0)
+		end := min(protectedRange.end, len(source))
+		for i := start; i < end; i++ {
+			if source[i] != '\n' && source[i] != '\r' {
+				source[i] = ' '
+			}
+		}
+	}
 }
 
 func sourcePositionEscaped(source []byte, position int) bool {
@@ -639,7 +648,9 @@ func referenceDestinationHasRenderedMathPair(node ast.Node, source []byte) bool 
 		return false
 	}
 
-	renderedDollars := destinationDollars + titleDollars + strings.Count(normalizeMarkdownDestination(string(node.Text(source))), "$")
+	labelSource := append([]byte(nil), source...)
+	maskSourceRanges(labelSource, katexProtectedSourceRanges(source, node))
+	renderedDollars := destinationDollars + titleDollars + strings.Count(normalizeMarkdownDestination(string(node.Text(labelSource))), "$")
 	_ = ast.Walk(node, func(child ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering || child == node {
 			return ast.WalkContinue, nil

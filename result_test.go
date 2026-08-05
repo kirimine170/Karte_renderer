@@ -218,6 +218,32 @@ $$$
 	}
 }
 
+func TestRenderResultExcludesReferencesPartiallyConsumedByMath(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "foo$bar.png"), "image")
+	writeFile(t, filepath.Join(root, "foo$bar.md"), "link")
+
+	tests := []struct {
+		name     string
+		markdown string
+	}{
+		{name: "image destination", markdown: `![x](foo$bar.png) tail $`},
+		{name: "link destination", markdown: `[x](foo$bar.md) tail $`},
+		{name: "autolink", markdown: `<https://example.com/foo$bar> tail $`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := RenderStringResult(root, test.markdown)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(result.Metadata.Assets) != 0 || len(result.Metadata.Links) != 0 || len(result.Metadata.Diagnostics) != 0 {
+				t.Fatalf("unexpected metadata: assets=%#v links=%#v diagnostics=%#v", result.Metadata.Assets, result.Metadata.Links, result.Metadata.Diagnostics)
+			}
+		})
+	}
+}
+
 func TestRenderResultNormalizesMathDelimiters(t *testing.T) {
 	result, err := RenderStringResult(t.TempDir(), `&#36;![numeric](numeric.png)$
 

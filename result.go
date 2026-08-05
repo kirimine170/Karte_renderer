@@ -228,7 +228,7 @@ func (c *metadataCollector) collectReferences(baseDir, markdown string) {
 		}
 		switch node.(type) {
 		case *ast.Image, *ast.Link, *ast.AutoLink:
-			if sourceOffsetInRanges(referenceSourceOffset(node, len(source), len(references)), mathRanges) {
+			if sourceRangeOverlapsAny(referenceSourceRange(node, source, len(references)), mathRanges) {
 				return ast.WalkContinue, nil
 			}
 		}
@@ -448,6 +448,43 @@ func referenceSourceOffset(node ast.Node, sourceLength, sequence int) int {
 		return offset
 	}
 	return sourceLength + sequence
+}
+
+func referenceSourceRange(node ast.Node, source []byte, sequence int) sourceRange {
+	start := referenceSourceOffset(node, len(source), sequence)
+	end := start + 1
+	if start < 0 || start >= len(source) {
+		return sourceRange{start: start, end: end}
+	}
+	if next := node.NextSibling(); next != nil {
+		if offset := next.Pos(); offset > start {
+			end = offset
+		}
+	}
+	if end == start+1 {
+		if parent := node.Parent(); parent != nil {
+			lines := parent.Lines()
+			if lines != nil && lines.Len() > 0 {
+				end = lines.At(lines.Len() - 1).Stop
+			}
+		}
+	}
+	if end > len(source) {
+		end = len(source)
+	}
+	return sourceRange{start: start, end: end}
+}
+
+func sourceRangeOverlapsAny(candidate sourceRange, ranges []sourceRange) bool {
+	for _, sourceRange := range ranges {
+		if candidate.end <= sourceRange.start {
+			return false
+		}
+		if candidate.start < sourceRange.end && sourceRange.start < candidate.end {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *metadataCollector) addLink(baseDir, target, classificationTarget string) {

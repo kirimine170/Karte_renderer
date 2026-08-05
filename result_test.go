@@ -218,6 +218,412 @@ $$$
 	}
 }
 
+func TestRenderResultExcludesReferencesPartiallyConsumedByMath(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "foo$bar.png"), "image")
+	writeFile(t, filepath.Join(root, "foo$bar.md"), "link")
+
+	tests := []struct {
+		name     string
+		markdown string
+	}{
+		{name: "image destination", markdown: `![x](foo$bar.png) tail $`},
+		{name: "link destination", markdown: `[x](foo$bar.md) tail $`},
+		{name: "autolink", markdown: `<https://example.com/foo$bar> tail $`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := RenderStringResult(root, test.markdown)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(result.Metadata.Assets) != 0 || len(result.Metadata.Links) != 0 || len(result.Metadata.Diagnostics) != 0 {
+				t.Fatalf("unexpected metadata: assets=%#v links=%#v diagnostics=%#v", result.Metadata.Assets, result.Metadata.Links, result.Metadata.Diagnostics)
+			}
+		})
+	}
+}
+
+func TestRenderResultKeepsAutolinksWithEncodedDollars(t *testing.T) {
+	for _, markdown := range []string{
+		`<https://example.com/foo&#36;bar>`,
+		`<https://example.com/foo&#x24;bar>`,
+	} {
+		result, err := RenderStringResult(t.TempDir(), markdown)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []RenderLink{{Kind: LinkExternal, Target: markdown[1 : len(markdown)-1]}}
+		if !reflect.DeepEqual(result.Metadata.Links, want) {
+			t.Fatalf("links = %#v, want %#v", result.Metadata.Links, want)
+		}
+	}
+}
+
+func TestRenderResultKeepsReferencesWithMathOnlyInLabels(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "notes.md"), "notes")
+	writeFile(t, filepath.Join(root, "plot.png"), "plot")
+	result, err := RenderStringResult(root, `[price $x$](notes.md)
+
+![plot $x$](plot.png)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLinks := []RenderLink{{Kind: LinkInternal, Target: "notes.md", Path: "notes.md"}}
+	if !reflect.DeepEqual(result.Metadata.Links, wantLinks) {
+		t.Fatalf("links = %#v, want %#v", result.Metadata.Links, wantLinks)
+	}
+	wantAssets := []RenderAsset{{Reference: "plot.png", Path: "plot.png", Status: AssetAvailable}}
+	if !reflect.DeepEqual(result.Metadata.Assets, wantAssets) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, wantAssets)
+	}
+	if len(result.Metadata.Diagnostics) != 0 {
+		t.Fatalf("unexpected diagnostics: %#v", result.Metadata.Diagnostics)
+	}
+}
+
+func TestRenderResultKeepsReferencesWithMathOnlyInTitles(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "notes.md"), "notes")
+	writeFile(t, filepath.Join(root, "plot.png"), "plot")
+	result, err := RenderStringResult(root, `[docs](notes.md "$x$")
+
+![plot](plot.png "$x$")`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLinks := []RenderLink{{Kind: LinkInternal, Target: "notes.md", Path: "notes.md"}}
+	if !reflect.DeepEqual(result.Metadata.Links, wantLinks) {
+		t.Fatalf("links = %#v, want %#v", result.Metadata.Links, wantLinks)
+	}
+	wantAssets := []RenderAsset{{Reference: "plot.png", Path: "plot.png", Status: AssetAvailable}}
+	if !reflect.DeepEqual(result.Metadata.Assets, wantAssets) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, wantAssets)
+	}
+}
+
+func TestRenderResultKeepsReferenceIDsWithMath(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "notes.md"), "notes")
+	writeFile(t, filepath.Join(root, "plot.png"), "plot")
+	result, err := RenderStringResult(root, `[docs][$id$]
+
+![plot][$image$]
+
+[$id$]: notes.md
+[$image$]: plot.png`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLinks := []RenderLink{{Kind: LinkInternal, Target: "notes.md", Path: "notes.md"}}
+	if !reflect.DeepEqual(result.Metadata.Links, wantLinks) {
+		t.Fatalf("links = %#v, want %#v", result.Metadata.Links, wantLinks)
+	}
+	wantAssets := []RenderAsset{{Reference: "plot.png", Path: "plot.png", Status: AssetAvailable}}
+	if !reflect.DeepEqual(result.Metadata.Assets, wantAssets) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, wantAssets)
+	}
+}
+
+func TestRenderResultKeepsReferencesBeforeSameLineDisplayMath(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "foo$bar.md"), "notes")
+	writeFile(t, filepath.Join(root, "foo$bar.png"), "plot")
+	result, err := RenderStringResult(root, `[docs](foo$bar.md) $$$z$$$
+
+![plot](foo$bar.png) $$$w$$$`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLinks := []RenderLink{{Kind: LinkInternal, Target: "foo$bar.md", Path: "foo$bar.md"}}
+	if !reflect.DeepEqual(result.Metadata.Links, wantLinks) {
+		t.Fatalf("links = %#v, want %#v", result.Metadata.Links, wantLinks)
+	}
+	wantAssets := []RenderAsset{{Reference: "foo$bar.png", Path: "foo$bar.png", Status: AssetAvailable}}
+	if !reflect.DeepEqual(result.Metadata.Assets, wantAssets) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, wantAssets)
+	}
+}
+
+func TestRenderResultKeepsReferencesWithProtectedLabelDollars(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "foo$bar.md"), "notes")
+	writeFile(t, filepath.Join(root, "foo$bar.png"), "plot")
+
+	tests := []struct {
+		name     string
+		markdown string
+	}{
+		{name: "code span", markdown: "[docs `$`](foo$bar.md)\n\n![plot `$`](foo$bar.png)"},
+		{name: "comment", markdown: "[docs <!-- $ -->](foo$bar.md)\n\n![plot <!-- $ -->](foo$bar.png)"},
+		{name: "code element", markdown: "[docs <code>$</code>](foo$bar.md)\n\n![plot <code>$</code>](foo$bar.png)"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := RenderStringResult(root, test.markdown)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantLinks := []RenderLink{{Kind: LinkInternal, Target: "foo$bar.md", Path: "foo$bar.md"}}
+			if !reflect.DeepEqual(result.Metadata.Links, wantLinks) {
+				t.Fatalf("links = %#v, want %#v", result.Metadata.Links, wantLinks)
+			}
+			wantAssets := []RenderAsset{{Reference: "foo$bar.png", Path: "foo$bar.png", Status: AssetAvailable}}
+			if !reflect.DeepEqual(result.Metadata.Assets, wantAssets) {
+				t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, wantAssets)
+			}
+			if len(result.Metadata.Diagnostics) != 0 {
+				t.Fatalf("unexpected diagnostics: %#v", result.Metadata.Diagnostics)
+			}
+		})
+	}
+}
+
+func TestRenderResultExcludesReferencesInsideInlineMathSpanningDisplayMath(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "notes.md"), "notes")
+	writeFile(t, filepath.Join(root, "plot.png"), "plot")
+	result, err := RenderStringResult(root, `$ [docs](notes.md) $$$z$$$ tail $
+
+$ ![plot](plot.png) $$$w$$$ tail $`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Metadata.Links) != 0 || len(result.Metadata.Assets) != 0 || len(result.Metadata.Diagnostics) != 0 {
+		t.Fatalf("unexpected metadata: links=%#v assets=%#v diagnostics=%#v", result.Metadata.Links, result.Metadata.Assets, result.Metadata.Diagnostics)
+	}
+}
+
+func TestRenderResultTracksInlineMathClosedByDisplayContent(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "notes.md"), "notes")
+	writeFile(t, filepath.Join(root, "plot.png"), "plot")
+	result, err := RenderStringResult(root, `$ [docs](notes.md) $$$z $ $$$
+
+$ ![plot](plot.png) $$$w $ $$$`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Metadata.Links) != 0 || len(result.Metadata.Assets) != 0 || len(result.Metadata.Diagnostics) != 0 {
+		t.Fatalf("unexpected metadata: links=%#v assets=%#v diagnostics=%#v", result.Metadata.Links, result.Metadata.Assets, result.Metadata.Diagnostics)
+	}
+}
+
+func TestRenderResultIgnoresInlineMathStartingInDisplayContent(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "notes.md"), "notes")
+	writeFile(t, filepath.Join(root, "plot.png"), "plot")
+	result, err := RenderStringResult(root, `$$$z $ $$$ [docs](notes.md) $y$
+
+$$$w $ $$$ ![plot](plot.png) $v$`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLinks := []RenderLink{{Kind: LinkInternal, Target: "notes.md", Path: "notes.md"}}
+	if !reflect.DeepEqual(result.Metadata.Links, wantLinks) {
+		t.Fatalf("links = %#v, want %#v", result.Metadata.Links, wantLinks)
+	}
+	wantAssets := []RenderAsset{{Reference: "plot.png", Path: "plot.png", Status: AssetAvailable}}
+	if !reflect.DeepEqual(result.Metadata.Assets, wantAssets) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, wantAssets)
+	}
+}
+
+func TestRenderResultIgnoresCommentDollarsWhenFindingMath(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "foo$bar.md"), "notes")
+	writeFile(t, filepath.Join(root, "foo$bar.png"), "plot")
+	result, err := RenderStringResult(root, `[docs](foo$bar.md) <!-- $ -->
+
+![plot](foo$bar.png) <!-- $ -->`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLinks := []RenderLink{{Kind: LinkInternal, Target: "foo$bar.md", Path: "foo$bar.md"}}
+	if !reflect.DeepEqual(result.Metadata.Links, wantLinks) {
+		t.Fatalf("links = %#v, want %#v", result.Metadata.Links, wantLinks)
+	}
+	wantAssets := []RenderAsset{{Reference: "foo$bar.png", Path: "foo$bar.png", Status: AssetAvailable}}
+	if !reflect.DeepEqual(result.Metadata.Assets, wantAssets) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, wantAssets)
+	}
+}
+
+func TestRenderResultKeepsDollarsInEscapedCommentsWhenFindingMath(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "notes.md"), "notes")
+	writeFile(t, filepath.Join(root, "plot.png"), "plot")
+	result, err := RenderStringResult(root, `$ [docs](notes.md) \<!-- $ -->
+
+$ ![plot](plot.png) \<!-- $ -->`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Metadata.Links) != 0 || len(result.Metadata.Assets) != 0 || len(result.Metadata.Diagnostics) != 0 {
+		t.Fatalf("unexpected metadata: links=%#v assets=%#v diagnostics=%#v", result.Metadata.Links, result.Metadata.Assets, result.Metadata.Diagnostics)
+	}
+}
+
+func TestRenderResultCollectsNestedInlineReferences(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "docs.md"), "docs")
+	writeFile(t, filepath.Join(root, "badge.svg"), "badge")
+	result, err := RenderStringResult(root, `*[docs](docs.md)* [![badge](badge.svg)](https://example.com)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLinks := []RenderLink{
+		{Kind: LinkInternal, Target: "docs.md", Path: "docs.md"},
+		{Kind: LinkExternal, Target: "https://example.com"},
+	}
+	if !reflect.DeepEqual(result.Metadata.Links, wantLinks) {
+		t.Fatalf("links = %#v, want %#v", result.Metadata.Links, wantLinks)
+	}
+	wantAssets := []RenderAsset{{Reference: "badge.svg", Path: "badge.svg", Status: AssetAvailable}}
+	if !reflect.DeepEqual(result.Metadata.Assets, wantAssets) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, wantAssets)
+	}
+}
+
+func TestRenderResultSeparatesNestedReferenceMathRanges(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "badge.svg"), "badge")
+	result, err := RenderStringResult(root, `[![badge](badge.svg)](https://example.com/foo$bar) tail $`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Metadata.Links) != 0 {
+		t.Fatalf("unexpected links: %#v", result.Metadata.Links)
+	}
+	wantAssets := []RenderAsset{{Reference: "badge.svg", Path: "badge.svg", Status: AssetAvailable}}
+	if !reflect.DeepEqual(result.Metadata.Assets, wantAssets) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, wantAssets)
+	}
+}
+
+func TestRenderResultPreservesOuterLinkWhenNestedImageMathIsConsumed(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "page.md"), "page")
+	writeFile(t, filepath.Join(root, "foo$bar.png"), "plot")
+	result, err := RenderStringResult(root, `[![alt](foo$bar.png)](page.md) tail $`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLinks := []RenderLink{{Kind: LinkInternal, Target: "page.md", Path: "page.md"}}
+	if !reflect.DeepEqual(result.Metadata.Links, wantLinks) {
+		t.Fatalf("links = %#v, want %#v", result.Metadata.Links, wantLinks)
+	}
+	if len(result.Metadata.Assets) != 0 || len(result.Metadata.Diagnostics) != 0 {
+		t.Fatalf("unexpected metadata: assets=%#v diagnostics=%#v", result.Metadata.Assets, result.Metadata.Diagnostics)
+	}
+}
+
+func TestRenderResultExcludesAutolinksWhoseDollarIsDuplicated(t *testing.T) {
+	result, err := RenderStringResult(t.TempDir(), `<https://example.com/foo$bar>`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Metadata.Links) != 0 {
+		t.Fatalf("unexpected links: %#v", result.Metadata.Links)
+	}
+}
+
+func TestRenderResultExcludesOuterLinkWhenHrefAndNestedImageContainDollars(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "page$baz.md"), "page")
+	writeFile(t, filepath.Join(root, "foo$bar.png"), "plot")
+	result, err := RenderStringResult(root, `[![alt](foo$bar.png)](page$baz.md)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Metadata.Links) != 0 || len(result.Metadata.Assets) != 0 || len(result.Metadata.Diagnostics) != 0 {
+		t.Fatalf("unexpected metadata: links=%#v assets=%#v diagnostics=%#v", result.Metadata.Links, result.Metadata.Assets, result.Metadata.Diagnostics)
+	}
+}
+
+func TestRenderResultIgnoresNestedLinkDestinationsInImageAltText(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "image$src.png"), "plot")
+	writeFile(t, filepath.Join(root, "foo$bar.md"), "page")
+	result, err := RenderStringResult(root, `![alt [inner](foo$bar.md)](image$src.png)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantAssets := []RenderAsset{{Reference: "image$src.png", Path: "image$src.png", Status: AssetAvailable}}
+	if !reflect.DeepEqual(result.Metadata.Assets, wantAssets) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, wantAssets)
+	}
+}
+
+func TestRenderResultKeepsDollarReferencesSeparatedByRenderedNewlines(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "foo$bar.md"), "page")
+	writeFile(t, filepath.Join(root, "foo$bar.png"), "plot")
+
+	tests := []struct {
+		name       string
+		markdown   string
+		wantLinks  []RenderLink
+		wantAssets []RenderAsset
+	}{
+		{
+			name:      "link label",
+			markdown:  "[docs\n$](foo$bar.md)",
+			wantLinks: []RenderLink{{Kind: LinkInternal, Target: "foo$bar.md", Path: "foo$bar.md"}},
+		},
+		{
+			name:      "link title",
+			markdown:  "[docs](foo$bar.md \"title\n$\")",
+			wantLinks: []RenderLink{{Kind: LinkInternal, Target: "foo$bar.md", Path: "foo$bar.md"}},
+		},
+		{
+			name:       "image label",
+			markdown:   "![plot\n$](foo$bar.png)",
+			wantAssets: []RenderAsset{{Reference: "foo$bar.png", Path: "foo$bar.png", Status: AssetAvailable}},
+		},
+		{
+			name:       "image title",
+			markdown:   "![plot](foo$bar.png \"title\n$\")",
+			wantAssets: []RenderAsset{{Reference: "foo$bar.png", Path: "foo$bar.png", Status: AssetAvailable}},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := RenderStringResult(root, test.markdown)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(result.Metadata.Links, test.wantLinks) {
+				t.Fatalf("links = %#v, want %#v", result.Metadata.Links, test.wantLinks)
+			}
+			if !reflect.DeepEqual(result.Metadata.Assets, test.wantAssets) {
+				t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, test.wantAssets)
+			}
+		})
+	}
+}
+
+func TestRenderResultKeepsReferencesWithAdjacentDestinationDollars(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "foo$$bar.md"), "page")
+	writeFile(t, filepath.Join(root, "foo$$bar.png"), "plot")
+	result, err := RenderStringResult(root, `[docs](foo$$bar.md)
+
+![plot](foo$$bar.png)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLinks := []RenderLink{{Kind: LinkInternal, Target: "foo$$bar.md", Path: "foo$$bar.md"}}
+	if !reflect.DeepEqual(result.Metadata.Links, wantLinks) {
+		t.Fatalf("links = %#v, want %#v", result.Metadata.Links, wantLinks)
+	}
+	wantAssets := []RenderAsset{{Reference: "foo$$bar.png", Path: "foo$$bar.png", Status: AssetAvailable}}
+	if !reflect.DeepEqual(result.Metadata.Assets, wantAssets) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, wantAssets)
+	}
+}
+
 func TestRenderResultNormalizesMathDelimiters(t *testing.T) {
 	result, err := RenderStringResult(t.TempDir(), `&#36;![numeric](numeric.png)$
 

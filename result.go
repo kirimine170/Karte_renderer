@@ -228,7 +228,7 @@ func (c *metadataCollector) collectReferences(baseDir, markdown string) {
 		}
 		switch node.(type) {
 		case *ast.Image, *ast.Link, *ast.AutoLink:
-			if sourceOffsetInRanges(referenceSourceOffset(node, len(source), len(references)), mathRanges) {
+			if referenceOverlapsMath(node, source, len(references), mathRanges) {
 				return ast.WalkContinue, nil
 			}
 		}
@@ -278,21 +278,8 @@ type sourceRange struct {
 
 func mathSourceRanges(source []byte, document ast.Node) []sourceRange {
 	masked := append([]byte(nil), source...)
-	protectedRanges := codeSourceRanges(document)
-	for _, re := range []*regexp.Regexp{katexProtectedPreRe, katexProtectedCodeRe} {
-		for _, match := range re.FindAllIndex(source, -1) {
-			protectedRanges = append(protectedRanges, sourceRange{start: match[0], end: match[1]})
-		}
-	}
-	for _, protectedRange := range protectedRanges {
-		start := max(protectedRange.start, 0)
-		end := min(protectedRange.end, len(masked))
-		for i := start; i < end; i++ {
-			if masked[i] != '\n' && masked[i] != '\r' {
-				masked[i] = ' '
-			}
-		}
-	}
+	protectedRanges := katexProtectedSourceRanges(source, document)
+	maskSourceRanges(masked, protectedRanges)
 
 	rawHTMLRanges := rawHTMLSourceRanges(document)
 	sort.Slice(rawHTMLRanges, func(i, j int) bool { return rawHTMLRanges[i].start < rawHTMLRanges[j].start })
@@ -302,7 +289,16 @@ func mathSourceRanges(source []byte, document ast.Node) []sourceRange {
 	for _, match := range displayMatches {
 		ranges = append(ranges, normalized.sourceRange(match))
 	}
-	for _, match := range katexInlineRe.FindAllIndex(normalized.value, -1) {
+	inlineSource := append([]byte(nil), normalized.value...)
+	for _, match := range displayMatches {
+		for i := match[0]; i < match[0]+3; i++ {
+			inlineSource[i] = ' '
+		}
+		for i := match[1] - 3; i < match[1]; i++ {
+			inlineSource[i] = ' '
+		}
+	}
+	for _, match := range katexInlineRe.FindAllIndex(inlineSource, -1) {
 		sourceMatch := normalized.sourceRange(match)
 		if !sourceOffsetInRanges(sourceMatch.start, ranges) {
 			ranges = append(ranges, sourceMatch)
@@ -310,6 +306,41 @@ func mathSourceRanges(source []byte, document ast.Node) []sourceRange {
 	}
 	sort.Slice(ranges, func(i, j int) bool { return ranges[i].start < ranges[j].start })
 	return ranges
+}
+
+func katexProtectedSourceRanges(source []byte, document ast.Node) []sourceRange {
+	protectedRanges := codeSourceRanges(document)
+	for _, match := range katexProtectedCommentRe.FindAllIndex(source, -1) {
+		if !sourcePositionEscaped(source, match[0]) {
+			protectedRanges = append(protectedRanges, sourceRange{start: match[0], end: match[1]})
+		}
+	}
+	for _, re := range []*regexp.Regexp{katexProtectedPreRe, katexProtectedCodeRe} {
+		for _, match := range re.FindAllIndex(source, -1) {
+			protectedRanges = append(protectedRanges, sourceRange{start: match[0], end: match[1]})
+		}
+	}
+	return protectedRanges
+}
+
+func maskSourceRanges(source []byte, ranges []sourceRange) {
+	for _, protectedRange := range ranges {
+		start := max(protectedRange.start, 0)
+		end := min(protectedRange.end, len(source))
+		for i := start; i < end; i++ {
+			if source[i] != '\n' && source[i] != '\r' {
+				source[i] = ' '
+			}
+		}
+	}
+}
+
+func sourcePositionEscaped(source []byte, position int) bool {
+	backslashes := 0
+	for i := position - 1; i >= 0 && source[i] == '\\'; i-- {
+		backslashes++
+	}
+	return backslashes%2 == 1
 }
 
 type normalizedSource struct {
@@ -448,6 +479,355 @@ func referenceSourceOffset(node ast.Node, sourceLength, sequence int) int {
 		return offset
 	}
 	return sourceLength + sequence
+}
+
+func referenceSourceRange(node ast.Node, source []byte, sequence int) sourceRange {
+	start := referenceSourceOffset(node, len(source), sequence)
+	end := start + 1
+	if start < 0 || start >= len(source) {
+		return sourceRange{start: start, end: end}
+	}
+	if next := node.NextSibling(); next != nil {
+		if offset := next.Pos(); offset > start {
+			return sourceRange{start: start, end: offset}
+		}
+	}
+
+	if _, ok := node.(*ast.AutoLink); ok {
+		if candidate := matchingDelimiterEnd(source, start, '<', '>'); candidate > start {
+			end = candidate
+		}
+		return sourceRange{start: start, end: end}
+	}
+
+	labelEnd := referenceLabelEnd(node, source, sourceRange{start: start, end: len(source)})
+	end = labelEnd
+	if reference := referenceLink(node); reference != nil {
+		if reference.Type != ast.ReferenceLinkShortcut && labelEnd < len(source) && source[labelEnd] == '[' {
+			if candidate := matchingDelimiterEnd(source, labelEnd, '[', ']'); candidate > labelEnd {
+				end = candidate
+			}
+		}
+	} else if labelEnd < len(source) && source[labelEnd] == '(' {
+		if candidate := matchingLinkDestinationEnd(source, labelEnd); candidate > labelEnd {
+			end = candidate
+		}
+	}
+	return sourceRange{start: start, end: end}
+}
+
+func matchingDelimiterEnd(source []byte, start int, open, close byte) int {
+	depth := 0
+	for i := start; i < len(source); i++ {
+		if source[i] == '\\' && i+1 < len(source) {
+			i++
+			continue
+		}
+		switch source[i] {
+		case open:
+			depth++
+		case close:
+			depth--
+			if depth == 0 {
+				return i + 1
+			}
+		}
+	}
+	return -1
+}
+
+func matchingLinkDestinationEnd(source []byte, start int) int {
+	depth := 0
+	var quote byte
+	angleDestination := false
+	itemStart := true
+	hasDestination := false
+	for i := start; i < len(source); i++ {
+		current := source[i]
+		if current == '\\' && i+1 < len(source) {
+			i++
+			itemStart = false
+			if depth == 1 {
+				hasDestination = true
+			}
+			continue
+		}
+		if quote != 0 {
+			if current == quote {
+				quote = 0
+			}
+			continue
+		}
+		if angleDestination {
+			if current == '>' {
+				angleDestination = false
+			}
+			continue
+		}
+		if depth == 1 && itemStart {
+			switch current {
+			case '<':
+				if !hasDestination {
+					angleDestination = true
+					hasDestination = true
+					continue
+				}
+			case '\'', '"':
+				if hasDestination {
+					quote = current
+					continue
+				}
+			}
+		}
+		switch current {
+		case '(':
+			depth++
+			itemStart = true
+		case ')':
+			depth--
+			if depth == 0 {
+				return i + 1
+			}
+		case ' ', '\t', '\n', '\r':
+			if depth == 1 {
+				itemStart = true
+			}
+		default:
+			itemStart = false
+			if depth == 1 {
+				hasDestination = true
+			}
+		}
+	}
+	return -1
+}
+
+func referenceOverlapsMath(node ast.Node, source []byte, sequence int, mathRanges []sourceRange) bool {
+	referenceRange := referenceSourceRange(node, source, sequence)
+	if sourceOffsetInRanges(referenceRange.start, mathRanges) {
+		return true
+	}
+	if autoLink, ok := node.(*ast.AutoLink); ok {
+		if strings.Contains(string(autoLink.Label(source)), "$") {
+			return true
+		}
+		return sourceRangeOverlapsAny(referenceRange, mathRanges)
+	}
+	if referenceDestinationHasRenderedMathPair(node, source) {
+		return true
+	}
+	reference := referenceLink(node)
+	if reference == nil {
+		labelEnd := referenceLabelEnd(node, source, referenceRange)
+		destinationRange, ok := inlineDestinationSourceRange(source, labelEnd, referenceRange.end)
+		if !ok {
+			return false
+		}
+		for _, mathRange := range mathRanges {
+			if mathRange.start >= labelEnd && destinationRange.start < mathRange.end && mathRange.start < destinationRange.end {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+func referenceDestinationHasRenderedMathPair(node ast.Node, source []byte) bool {
+	destinationDollars := 0
+	switch node := node.(type) {
+	case *ast.Image:
+		destinationDollars = strings.Count(normalizeMarkdownDestination(string(node.Destination)), "$")
+	case *ast.Link:
+		destinationDollars = strings.Count(normalizeMarkdownDestination(string(node.Destination)), "$")
+	}
+	if destinationDollars == 0 {
+		return false
+	}
+
+	labelSource := append([]byte(nil), source...)
+	maskSourceRanges(labelSource, katexProtectedSourceRanges(source, node))
+	rendered := referenceRenderedMathText(node, source, labelSource)
+	return katexInlineRe.MatchString(rendered)
+}
+
+func referenceRenderedMathText(node ast.Node, source, labelSource []byte) string {
+	var rendered strings.Builder
+	var writeNode func(ast.Node)
+	var writeAltNode func(ast.Node)
+	writeChildren := func(parent ast.Node) {
+		for child := parent.FirstChild(); child != nil; child = child.NextSibling() {
+			writeNode(child)
+		}
+	}
+	writeAltChildren := func(parent ast.Node) {
+		for child := parent.FirstChild(); child != nil; child = child.NextSibling() {
+			writeAltNode(child)
+		}
+	}
+	writeAltNode = func(current ast.Node) {
+		switch current := current.(type) {
+		case *ast.CodeSpan:
+			// processKaTeX protects code contents before Markdown flattens alt text.
+		case *ast.Text:
+			rendered.WriteString(normalizeMarkdownDestination(string(current.Segment.Value(labelSource))))
+			if current.SoftLineBreak() || current.HardLineBreak() {
+				rendered.WriteByte('\n')
+			}
+		case *ast.String:
+			rendered.WriteString(normalizeMarkdownDestination(string(current.Value)))
+		default:
+			writeAltChildren(current)
+		}
+	}
+	writeNode = func(current ast.Node) {
+		switch current := current.(type) {
+		case *ast.Link:
+			rendered.WriteString(normalizeMarkdownDestination(string(current.Destination)))
+			rendered.WriteString(normalizeMarkdownDestination(string(current.Title)))
+			writeChildren(current)
+		case *ast.Image:
+			rendered.WriteString(normalizeMarkdownDestination(string(current.Destination)))
+			writeAltChildren(current)
+			rendered.WriteString(normalizeMarkdownDestination(string(current.Title)))
+		case *ast.AutoLink:
+			label := string(current.Label(source))
+			rendered.WriteString(label)
+			rendered.WriteString(label)
+		case *ast.CodeSpan:
+			// processKaTeX protects code contents before matching math.
+		case *ast.Text:
+			rendered.WriteString(normalizeMarkdownDestination(string(current.Segment.Value(labelSource))))
+			if current.SoftLineBreak() || current.HardLineBreak() {
+				rendered.WriteByte('\n')
+			}
+		case *ast.String:
+			rendered.WriteString(normalizeMarkdownDestination(string(current.Value)))
+		case *ast.RawHTML:
+			rendered.WriteString(string(current.Text(labelSource)))
+		default:
+			writeChildren(current)
+		}
+	}
+	writeNode(node)
+	return rendered.String()
+}
+
+func inlineDestinationSourceRange(source []byte, labelEnd, referenceEnd int) (sourceRange, bool) {
+	start := labelEnd
+	if start >= referenceEnd || start >= len(source) || source[start] != '(' {
+		return sourceRange{}, false
+	}
+	start++
+	for start < referenceEnd && start < len(source) && (source[start] == ' ' || source[start] == '\t' || source[start] == '\n' || source[start] == '\r') {
+		start++
+	}
+	if start >= referenceEnd || start >= len(source) || source[start] == ')' {
+		return sourceRange{}, false
+	}
+	if source[start] == '<' {
+		start++
+		for i := start; i < referenceEnd && i < len(source); i++ {
+			if source[i] == '\\' && i+1 < len(source) {
+				i++
+				continue
+			}
+			if source[i] == '>' {
+				return sourceRange{start: start, end: i}, i > start
+			}
+		}
+		return sourceRange{}, false
+	}
+
+	opened := 0
+	for i := start; i < referenceEnd && i < len(source); i++ {
+		if source[i] == '\\' && i+1 < len(source) {
+			i++
+			continue
+		}
+		switch source[i] {
+		case '(':
+			opened++
+		case ')':
+			if opened == 0 {
+				return sourceRange{start: start, end: i}, i > start
+			}
+			opened--
+		case ' ', '\t', '\n', '\r':
+			return sourceRange{start: start, end: i}, i > start
+		}
+	}
+	return sourceRange{}, false
+}
+
+func referenceLink(node ast.Node) *ast.ReferenceLink {
+	switch node := node.(type) {
+	case *ast.Image:
+		return node.Reference
+	case *ast.Link:
+		return node.Reference
+	default:
+		return nil
+	}
+}
+
+func referenceLabelEnd(node ast.Node, source []byte, referenceRange sourceRange) int {
+	searchStart := referenceRange.start + 1
+	if referenceRange.start < len(source) && source[referenceRange.start] == '!' {
+		searchStart++
+	}
+	_ = ast.Walk(node, func(child ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering || child == node {
+			return ast.WalkContinue, nil
+		}
+		switch child := child.(type) {
+		case *ast.Image:
+			if end := referenceSourceRange(child, source, 0).end; end > searchStart {
+				searchStart = end
+			}
+		case *ast.Link:
+			if end := referenceSourceRange(child, source, 0).end; end > searchStart {
+				searchStart = end
+			}
+		case *ast.AutoLink:
+			if end := referenceSourceRange(child, source, 0).end; end > searchStart {
+				searchStart = end
+			}
+		case *ast.Text:
+			if child.Segment.Stop > searchStart {
+				searchStart = child.Segment.Stop
+			}
+		case *ast.RawHTML:
+			for i := 0; i < child.Segments.Len(); i++ {
+				if stop := child.Segments.At(i).Stop; stop > searchStart {
+					searchStart = stop
+				}
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+	for i := searchStart; i < referenceRange.end && i < len(source); i++ {
+		if source[i] == '\\' {
+			i++
+			continue
+		}
+		if source[i] == ']' {
+			return i + 1
+		}
+	}
+	return referenceRange.end
+}
+
+func sourceRangeOverlapsAny(candidate sourceRange, ranges []sourceRange) bool {
+	for _, sourceRange := range ranges {
+		if candidate.end <= sourceRange.start {
+			return false
+		}
+		if candidate.start < sourceRange.end && sourceRange.start < candidate.end {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *metadataCollector) addLink(baseDir, target, classificationTarget string) {

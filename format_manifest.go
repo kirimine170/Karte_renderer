@@ -55,6 +55,80 @@ type FormatAssetsManifest struct {
 	Directory string `yaml:"directory" json:"directory"`
 }
 
+type formatManifestYAML struct {
+	SchemaVersion formatManifestInt          `yaml:"schemaVersion"`
+	Name          formatManifestString       `yaml:"name"`
+	Version       formatManifestString       `yaml:"version"`
+	Markdown      formatMarkdownManifestYAML `yaml:"markdown"`
+	Marp          formatMarpManifestYAML     `yaml:"marp"`
+	Assets        formatAssetsManifestYAML   `yaml:"assets"`
+}
+
+type formatMarkdownManifestYAML struct {
+	Layout formatManifestString     `yaml:"layout"`
+	Styles formatManifestStringList `yaml:"styles"`
+}
+
+type formatMarpManifestYAML struct {
+	DefaultTheme formatManifestString     `yaml:"defaultTheme"`
+	Themes       formatManifestStringList `yaml:"themes"`
+}
+
+type formatAssetsManifestYAML struct {
+	Directory formatManifestString `yaml:"directory"`
+}
+
+type formatManifestInt int
+
+func (value *formatManifestInt) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.ScalarNode || node.Tag != "!!int" {
+		return fmt.Errorf("expected integer, got %s", yamlNodeType(node))
+	}
+	var decoded int
+	if err := node.Decode(&decoded); err != nil {
+		return err
+	}
+	*value = formatManifestInt(decoded)
+	return nil
+}
+
+type formatManifestString string
+
+func (value *formatManifestString) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.ScalarNode || node.Tag != "!!str" {
+		return fmt.Errorf("expected string, got %s", yamlNodeType(node))
+	}
+	*value = formatManifestString(node.Value)
+	return nil
+}
+
+type formatManifestStringList []string
+
+func (values *formatManifestStringList) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.SequenceNode {
+		return fmt.Errorf("expected string array, got %s", yamlNodeType(node))
+	}
+	decoded := make([]string, 0, len(node.Content))
+	for i, child := range node.Content {
+		if child.Kind != yaml.ScalarNode || child.Tag != "!!str" {
+			return fmt.Errorf("item %d: expected string, got %s", i, yamlNodeType(child))
+		}
+		decoded = append(decoded, child.Value)
+	}
+	*values = decoded
+	return nil
+}
+
+func yamlNodeType(node *yaml.Node) string {
+	if node == nil {
+		return "missing value"
+	}
+	if node.Tag != "" {
+		return node.Tag
+	}
+	return fmt.Sprintf("YAML kind %d", node.Kind)
+}
+
 // LoadFormatManifest reads and validates karte-format.yaml in directory.
 // Paths remain package-relative; resolving files and symlinks belongs to the
 // package resolver.
@@ -77,8 +151,8 @@ func LoadFormatManifest(directory string) (FormatManifest, error) {
 func ParseFormatManifest(source []byte) (FormatManifest, error) {
 	decoder := yaml.NewDecoder(bytes.NewReader(source))
 	decoder.KnownFields(true)
-	var manifest FormatManifest
-	if err := decoder.Decode(&manifest); err != nil {
+	var decoded formatManifestYAML
+	if err := decoder.Decode(&decoded); err != nil {
 		return FormatManifest{}, err
 	}
 	var trailing any
@@ -87,6 +161,20 @@ func ParseFormatManifest(source []byte) (FormatManifest, error) {
 			return FormatManifest{}, errors.New("multiple YAML documents are not allowed")
 		}
 		return FormatManifest{}, err
+	}
+	manifest := FormatManifest{
+		SchemaVersion: int(decoded.SchemaVersion),
+		Name:          string(decoded.Name),
+		Version:       string(decoded.Version),
+		Markdown: FormatMarkdownManifest{
+			Layout: string(decoded.Markdown.Layout),
+			Styles: []string(decoded.Markdown.Styles),
+		},
+		Marp: FormatMarpManifest{
+			DefaultTheme: string(decoded.Marp.DefaultTheme),
+			Themes:       []string(decoded.Marp.Themes),
+		},
+		Assets: FormatAssetsManifest{Directory: string(decoded.Assets.Directory)},
 	}
 	if err := manifest.validate(); err != nil {
 		return FormatManifest{}, err

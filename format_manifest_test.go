@@ -130,6 +130,33 @@ func TestParseFormatManifestRejectsInvalidContracts(t *testing.T) {
 	}
 }
 
+func TestParseFormatManifestRejectsNonStringScalars(t *testing.T) {
+	tests := []struct {
+		name    string
+		replace string
+		with    string
+		want    string
+	}{
+		{name: "quoted schema", replace: "schemaVersion: 1", with: `schemaVersion: "1"`, want: "expected integer, got !!str"},
+		{name: "numeric name", replace: "name: karte-default", with: "name: 404", want: "expected string, got !!int"},
+		{name: "boolean version", replace: "version: 1.0.0", with: "version: true", want: "expected string, got !!bool"},
+		{name: "numeric layout", replace: "markdown/layout.html", with: "404", want: "expected string, got !!int"},
+		{name: "boolean style", replace: "markdown/base.css", with: "true", want: "item 0: expected string, got !!bool"},
+		{name: "boolean default theme", replace: "defaultTheme: karte", with: "defaultTheme: true", want: "expected string, got !!bool"},
+		{name: "numeric theme", replace: "marp/karte.css", with: "404", want: "item 0: expected string, got !!int"},
+		{name: "numeric assets directory", replace: "directory: assets", with: "directory: 404", want: "expected string, got !!int"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			source := strings.Replace(validFormatManifest, test.replace, test.with, 1)
+			_, err := ParseFormatManifest([]byte(source))
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want substring %q", err, test.want)
+			}
+		})
+	}
+}
+
 func TestParseFormatManifestRejectsUnsafePaths(t *testing.T) {
 	tests := []struct {
 		name string
@@ -142,6 +169,10 @@ func TestParseFormatManifestRejectsUnsafePaths(t *testing.T) {
 		{name: "windows drive", path: `C:/formats/layout.html`, want: "package-relative local path"},
 		{name: "backslash", path: `markdown\layout.html`, want: "forward slashes"},
 		{name: "remote URL", path: "https://example.com/layout.html", want: "package-relative local path"},
+		{name: "current directory", path: ".", want: "escapes the format package"},
+		{name: "leading space", path: `" markdown/layout.html"`, want: "surrounding whitespace"},
+		{name: "trailing space", path: `"markdown/layout.html "`, want: "surrounding whitespace"},
+		{name: "NUL", path: `"markdown\0layout.html"`, want: "contains a NUL byte"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

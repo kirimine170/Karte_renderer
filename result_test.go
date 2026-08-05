@@ -267,6 +267,43 @@ func TestRenderResultKeepsReferencesWithMathOnlyInLabels(t *testing.T) {
 	}
 }
 
+func TestRenderResultCollectsNestedInlineReferences(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "docs.md"), "docs")
+	writeFile(t, filepath.Join(root, "badge.svg"), "badge")
+	result, err := RenderStringResult(root, `*[docs](docs.md)* [![badge](badge.svg)](https://example.com)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLinks := []RenderLink{
+		{Kind: LinkInternal, Target: "docs.md", Path: "docs.md"},
+		{Kind: LinkExternal, Target: "https://example.com"},
+	}
+	if !reflect.DeepEqual(result.Metadata.Links, wantLinks) {
+		t.Fatalf("links = %#v, want %#v", result.Metadata.Links, wantLinks)
+	}
+	wantAssets := []RenderAsset{{Reference: "badge.svg", Path: "badge.svg", Status: AssetAvailable}}
+	if !reflect.DeepEqual(result.Metadata.Assets, wantAssets) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, wantAssets)
+	}
+}
+
+func TestRenderResultSeparatesNestedReferenceMathRanges(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "badge.svg"), "badge")
+	result, err := RenderStringResult(root, `[![badge](badge.svg)](https://example.com/foo$bar) tail $`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Metadata.Links) != 0 {
+		t.Fatalf("unexpected links: %#v", result.Metadata.Links)
+	}
+	wantAssets := []RenderAsset{{Reference: "badge.svg", Path: "badge.svg", Status: AssetAvailable}}
+	if !reflect.DeepEqual(result.Metadata.Assets, wantAssets) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, wantAssets)
+	}
+}
+
 func TestRenderResultNormalizesMathDelimiters(t *testing.T) {
 	result, err := RenderStringResult(t.TempDir(), `&#36;![numeric](numeric.png)$
 

@@ -458,21 +458,117 @@ func referenceSourceRange(node ast.Node, source []byte, sequence int) sourceRang
 	}
 	if next := node.NextSibling(); next != nil {
 		if offset := next.Pos(); offset > start {
-			end = offset
+			return sourceRange{start: start, end: offset}
 		}
 	}
-	if end == start+1 {
-		if parent := node.Parent(); parent != nil {
-			lines := parent.Lines()
-			if lines != nil && lines.Len() > 0 {
-				end = lines.At(lines.Len() - 1).Stop
+
+	if _, ok := node.(*ast.AutoLink); ok {
+		if candidate := matchingDelimiterEnd(source, start, '<', '>'); candidate > start {
+			end = candidate
+		}
+		return sourceRange{start: start, end: end}
+	}
+
+	labelEnd := referenceLabelEnd(node, source, sourceRange{start: start, end: len(source)})
+	end = labelEnd
+	if reference := referenceLink(node); reference != nil {
+		if reference.Type != ast.ReferenceLinkShortcut && labelEnd < len(source) && source[labelEnd] == '[' {
+			if candidate := matchingDelimiterEnd(source, labelEnd, '[', ']'); candidate > labelEnd {
+				end = candidate
+			}
+		}
+	} else if labelEnd < len(source) && source[labelEnd] == '(' {
+		if candidate := matchingLinkDestinationEnd(source, labelEnd); candidate > labelEnd {
+			end = candidate
+		}
+	}
+	return sourceRange{start: start, end: end}
+}
+
+func matchingDelimiterEnd(source []byte, start int, open, close byte) int {
+	depth := 0
+	for i := start; i < len(source); i++ {
+		if source[i] == '\\' && i+1 < len(source) {
+			i++
+			continue
+		}
+		switch source[i] {
+		case open:
+			depth++
+		case close:
+			depth--
+			if depth == 0 {
+				return i + 1
 			}
 		}
 	}
-	if end > len(source) {
-		end = len(source)
+	return -1
+}
+
+func matchingLinkDestinationEnd(source []byte, start int) int {
+	depth := 0
+	var quote byte
+	angleDestination := false
+	itemStart := true
+	hasDestination := false
+	for i := start; i < len(source); i++ {
+		current := source[i]
+		if current == '\\' && i+1 < len(source) {
+			i++
+			itemStart = false
+			if depth == 1 {
+				hasDestination = true
+			}
+			continue
+		}
+		if quote != 0 {
+			if current == quote {
+				quote = 0
+			}
+			continue
+		}
+		if angleDestination {
+			if current == '>' {
+				angleDestination = false
+			}
+			continue
+		}
+		if depth == 1 && itemStart {
+			switch current {
+			case '<':
+				if !hasDestination {
+					angleDestination = true
+					hasDestination = true
+					continue
+				}
+			case '\'', '"':
+				if hasDestination {
+					quote = current
+					continue
+				}
+			}
+		}
+		switch current {
+		case '(':
+			depth++
+			itemStart = true
+		case ')':
+			depth--
+			if depth == 0 {
+				return i + 1
+			}
+		case ' ', '\t', '\n', '\r':
+			if depth == 1 {
+				itemStart = true
+			}
+		default:
+			itemStart = false
+			if depth == 1 {
+				hasDestination = true
+			}
+		}
 	}
-	return sourceRange{start: start, end: end}
+	return -1
 }
 
 func referenceOverlapsMath(node ast.Node, source []byte, sequence int, mathRanges []sourceRange) bool {
@@ -511,6 +607,18 @@ func referenceLabelEnd(node ast.Node, source []byte, referenceRange sourceRange)
 			return ast.WalkContinue, nil
 		}
 		switch child := child.(type) {
+		case *ast.Image:
+			if end := referenceSourceRange(child, source, 0).end; end > searchStart {
+				searchStart = end
+			}
+		case *ast.Link:
+			if end := referenceSourceRange(child, source, 0).end; end > searchStart {
+				searchStart = end
+			}
+		case *ast.AutoLink:
+			if end := referenceSourceRange(child, source, 0).end; end > searchStart {
+				searchStart = end
+			}
 		case *ast.Text:
 			if child.Segment.Stop > searchStart {
 				searchStart = child.Segment.Stop

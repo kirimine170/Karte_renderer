@@ -1,0 +1,17 @@
+:root {
+  color: #201a2b;
+  background: #ffffff;
+  font-family: system-ui, sans-serif;
+}
+
+.karte-document {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 3rem 2rem;
+}
+
+h1,
+h2,
+h3 {
+  color: #6f42c1;
+}

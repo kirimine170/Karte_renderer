@@ -1,0 +1,19 @@
+/* @theme karte-minimal */
+
+@import "default";
+
+:root {
+  --karte-accent: #6f42c1;
+}
+
+section {
+  color: #201a2b;
+  background: #ffffff;
+  font-family: system-ui, sans-serif;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--karte-accent);
+}

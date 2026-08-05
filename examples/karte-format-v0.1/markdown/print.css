@@ -1,0 +1,6 @@
+@media print {
+  .karte-document {
+    max-width: none;
+    padding: 0;
+  }
+}

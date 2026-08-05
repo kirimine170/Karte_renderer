@@ -380,6 +380,26 @@ $$$w $ $$$ ![plot](plot.png) $v$`)
 	}
 }
 
+func TestRenderResultIgnoresCommentDollarsWhenFindingMath(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "foo$bar.md"), "notes")
+	writeFile(t, filepath.Join(root, "foo$bar.png"), "plot")
+	result, err := RenderStringResult(root, `[docs](foo$bar.md) <!-- $ -->
+
+![plot](foo$bar.png) <!-- $ -->`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLinks := []RenderLink{{Kind: LinkInternal, Target: "foo$bar.md", Path: "foo$bar.md"}}
+	if !reflect.DeepEqual(result.Metadata.Links, wantLinks) {
+		t.Fatalf("links = %#v, want %#v", result.Metadata.Links, wantLinks)
+	}
+	wantAssets := []RenderAsset{{Reference: "foo$bar.png", Path: "foo$bar.png", Status: AssetAvailable}}
+	if !reflect.DeepEqual(result.Metadata.Assets, wantAssets) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, wantAssets)
+	}
+}
+
 func TestRenderResultCollectsNestedInlineReferences(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "docs.md"), "docs")

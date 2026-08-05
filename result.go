@@ -279,7 +279,12 @@ type sourceRange struct {
 func mathSourceRanges(source []byte, document ast.Node) []sourceRange {
 	masked := append([]byte(nil), source...)
 	protectedRanges := codeSourceRanges(document)
-	for _, re := range []*regexp.Regexp{katexProtectedCommentRe, katexProtectedPreRe, katexProtectedCodeRe} {
+	for _, match := range katexProtectedCommentRe.FindAllIndex(source, -1) {
+		if !sourcePositionEscaped(source, match[0]) {
+			protectedRanges = append(protectedRanges, sourceRange{start: match[0], end: match[1]})
+		}
+	}
+	for _, re := range []*regexp.Regexp{katexProtectedPreRe, katexProtectedCodeRe} {
 		for _, match := range re.FindAllIndex(source, -1) {
 			protectedRanges = append(protectedRanges, sourceRange{start: match[0], end: match[1]})
 		}
@@ -319,6 +324,14 @@ func mathSourceRanges(source []byte, document ast.Node) []sourceRange {
 	}
 	sort.Slice(ranges, func(i, j int) bool { return ranges[i].start < ranges[j].start })
 	return ranges
+}
+
+func sourcePositionEscaped(source []byte, position int) bool {
+	backslashes := 0
+	for i := position - 1; i >= 0 && source[i] == '\\'; i-- {
+		backslashes++
+	}
+	return backslashes%2 == 1
 }
 
 type normalizedSource struct {

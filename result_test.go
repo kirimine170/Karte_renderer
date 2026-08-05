@@ -400,6 +400,21 @@ func TestRenderResultIgnoresCommentDollarsWhenFindingMath(t *testing.T) {
 	}
 }
 
+func TestRenderResultKeepsDollarsInEscapedCommentsWhenFindingMath(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "notes.md"), "notes")
+	writeFile(t, filepath.Join(root, "plot.png"), "plot")
+	result, err := RenderStringResult(root, `$ [docs](notes.md) \<!-- $ -->
+
+$ ![plot](plot.png) \<!-- $ -->`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Metadata.Links) != 0 || len(result.Metadata.Assets) != 0 || len(result.Metadata.Diagnostics) != 0 {
+		t.Fatalf("unexpected metadata: links=%#v assets=%#v diagnostics=%#v", result.Metadata.Links, result.Metadata.Assets, result.Metadata.Diagnostics)
+	}
+}
+
 func TestRenderResultCollectsNestedInlineReferences(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "docs.md"), "docs")

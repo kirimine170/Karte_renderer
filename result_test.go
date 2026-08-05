@@ -244,6 +244,22 @@ func TestRenderResultExcludesReferencesPartiallyConsumedByMath(t *testing.T) {
 	}
 }
 
+func TestRenderResultKeepsAutolinksWithEncodedDollars(t *testing.T) {
+	for _, markdown := range []string{
+		`<https://example.com/foo&#36;bar>`,
+		`<https://example.com/foo&#x24;bar>`,
+	} {
+		result, err := RenderStringResult(t.TempDir(), markdown)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []RenderLink{{Kind: LinkExternal, Target: markdown[1 : len(markdown)-1]}}
+		if !reflect.DeepEqual(result.Metadata.Links, want) {
+			t.Fatalf("links = %#v, want %#v", result.Metadata.Links, want)
+		}
+	}
+}
+
 func TestRenderResultKeepsReferencesWithMathOnlyInLabels(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "notes.md"), "notes")

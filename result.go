@@ -608,7 +608,7 @@ func referenceOverlapsMath(node ast.Node, source []byte, sequence int, mathRange
 		return true
 	}
 	if autoLink, ok := node.(*ast.AutoLink); ok {
-		if strings.Contains(normalizeMarkdownDestination(string(autoLink.Label(source))), "$") {
+		if strings.Contains(string(autoLink.Label(source)), "$") {
 			return true
 		}
 		return sourceRangeOverlapsAny(referenceRange, mathRanges)
@@ -663,7 +663,7 @@ func referenceDestinationHasRenderedMathPair(node ast.Node, source []byte) bool 
 			renderedDollars += strings.Count(normalizeMarkdownDestination(string(child.Destination)), "$")
 			renderedDollars += strings.Count(normalizeMarkdownDestination(string(child.Title)), "$")
 		case *ast.AutoLink:
-			renderedDollars += strings.Count(normalizeMarkdownDestination(string(child.Label(source))), "$")
+			renderedDollars += strings.Count(string(child.Label(source)), "$")
 		}
 		return ast.WalkContinue, nil
 	})

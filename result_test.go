@@ -604,6 +604,26 @@ func TestRenderResultKeepsDollarReferencesSeparatedByRenderedNewlines(t *testing
 	}
 }
 
+func TestRenderResultKeepsReferencesWithAdjacentDestinationDollars(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "foo$$bar.md"), "page")
+	writeFile(t, filepath.Join(root, "foo$$bar.png"), "plot")
+	result, err := RenderStringResult(root, `[docs](foo$$bar.md)
+
+![plot](foo$$bar.png)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLinks := []RenderLink{{Kind: LinkInternal, Target: "foo$$bar.md", Path: "foo$$bar.md"}}
+	if !reflect.DeepEqual(result.Metadata.Links, wantLinks) {
+		t.Fatalf("links = %#v, want %#v", result.Metadata.Links, wantLinks)
+	}
+	wantAssets := []RenderAsset{{Reference: "foo$$bar.png", Path: "foo$$bar.png", Status: AssetAvailable}}
+	if !reflect.DeepEqual(result.Metadata.Assets, wantAssets) {
+		t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, wantAssets)
+	}
+}
+
 func TestRenderResultNormalizesMathDelimiters(t *testing.T) {
 	result, err := RenderStringResult(t.TempDir(), `&#36;![numeric](numeric.png)$
 

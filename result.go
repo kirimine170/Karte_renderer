@@ -648,12 +648,7 @@ func referenceDestinationHasRenderedMathPair(node ast.Node, source []byte) bool 
 	labelSource := append([]byte(nil), source...)
 	maskSourceRanges(labelSource, katexProtectedSourceRanges(source, node))
 	rendered := referenceRenderedMathText(node, source, labelSource)
-	for _, line := range strings.Split(rendered, "\n") {
-		if strings.Count(line, "$") > 1 {
-			return true
-		}
-	}
-	return false
+	return katexInlineRe.MatchString(rendered)
 }
 
 func referenceRenderedMathText(node ast.Node, source, labelSource []byte) string {

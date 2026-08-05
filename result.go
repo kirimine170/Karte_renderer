@@ -598,8 +598,14 @@ func referenceOverlapsMath(node ast.Node, source []byte, sequence int, mathRange
 	if sourceOffsetInRanges(referenceRange.start, mathRanges) {
 		return true
 	}
-	if _, ok := node.(*ast.AutoLink); ok {
+	if autoLink, ok := node.(*ast.AutoLink); ok {
+		if strings.Contains(normalizeMarkdownDestination(string(autoLink.Label(source))), "$") {
+			return true
+		}
 		return sourceRangeOverlapsAny(referenceRange, mathRanges)
+	}
+	if referenceDestinationHasRenderedMathPair(node, source) {
+		return true
 	}
 	reference := referenceLink(node)
 	if reference == nil {
@@ -616,6 +622,41 @@ func referenceOverlapsMath(node ast.Node, source []byte, sequence int, mathRange
 		return false
 	}
 	return false
+}
+
+func referenceDestinationHasRenderedMathPair(node ast.Node, source []byte) bool {
+	destinationDollars := 0
+	titleDollars := 0
+	switch node := node.(type) {
+	case *ast.Image:
+		destinationDollars = strings.Count(normalizeMarkdownDestination(string(node.Destination)), "$")
+		titleDollars = strings.Count(normalizeMarkdownDestination(string(node.Title)), "$")
+	case *ast.Link:
+		destinationDollars = strings.Count(normalizeMarkdownDestination(string(node.Destination)), "$")
+		titleDollars = strings.Count(normalizeMarkdownDestination(string(node.Title)), "$")
+	}
+	if destinationDollars == 0 {
+		return false
+	}
+
+	renderedDollars := destinationDollars + titleDollars + strings.Count(normalizeMarkdownDestination(string(node.Text(source))), "$")
+	_ = ast.Walk(node, func(child ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering || child == node {
+			return ast.WalkContinue, nil
+		}
+		switch child := child.(type) {
+		case *ast.Image:
+			renderedDollars += strings.Count(normalizeMarkdownDestination(string(child.Destination)), "$")
+			renderedDollars += strings.Count(normalizeMarkdownDestination(string(child.Title)), "$")
+		case *ast.Link:
+			renderedDollars += strings.Count(normalizeMarkdownDestination(string(child.Destination)), "$")
+			renderedDollars += strings.Count(normalizeMarkdownDestination(string(child.Title)), "$")
+		case *ast.AutoLink:
+			renderedDollars += strings.Count(normalizeMarkdownDestination(string(child.Label(source))), "$")
+		}
+		return ast.WalkContinue, nil
+	})
+	return renderedDollars > 1
 }
 
 func inlineDestinationSourceRange(source []byte, labelEnd, referenceEnd int) (sourceRange, bool) {

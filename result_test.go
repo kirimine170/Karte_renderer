@@ -469,6 +469,29 @@ func TestRenderResultPreservesOuterLinkWhenNestedImageMathIsConsumed(t *testing.
 	}
 }
 
+func TestRenderResultExcludesAutolinksWhoseDollarIsDuplicated(t *testing.T) {
+	result, err := RenderStringResult(t.TempDir(), `<https://example.com/foo$bar>`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Metadata.Links) != 0 {
+		t.Fatalf("unexpected links: %#v", result.Metadata.Links)
+	}
+}
+
+func TestRenderResultExcludesOuterLinkWhenHrefAndNestedImageContainDollars(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "page$baz.md"), "page")
+	writeFile(t, filepath.Join(root, "foo$bar.png"), "plot")
+	result, err := RenderStringResult(root, `[![alt](foo$bar.png)](page$baz.md)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Metadata.Links) != 0 || len(result.Metadata.Assets) != 0 || len(result.Metadata.Diagnostics) != 0 {
+		t.Fatalf("unexpected metadata: links=%#v assets=%#v diagnostics=%#v", result.Metadata.Links, result.Metadata.Assets, result.Metadata.Diagnostics)
+	}
+}
+
 func TestRenderResultNormalizesMathDelimiters(t *testing.T) {
 	result, err := RenderStringResult(t.TempDir(), `&#36;![numeric](numeric.png)$
 

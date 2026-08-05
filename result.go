@@ -635,14 +635,11 @@ func referenceOverlapsMath(node ast.Node, source []byte, sequence int, mathRange
 
 func referenceDestinationHasRenderedMathPair(node ast.Node, source []byte) bool {
 	destinationDollars := 0
-	titleDollars := 0
 	switch node := node.(type) {
 	case *ast.Image:
 		destinationDollars = strings.Count(normalizeMarkdownDestination(string(node.Destination)), "$")
-		titleDollars = strings.Count(normalizeMarkdownDestination(string(node.Title)), "$")
 	case *ast.Link:
 		destinationDollars = strings.Count(normalizeMarkdownDestination(string(node.Destination)), "$")
-		titleDollars = strings.Count(normalizeMarkdownDestination(string(node.Title)), "$")
 	}
 	if destinationDollars == 0 {
 		return false
@@ -650,24 +647,54 @@ func referenceDestinationHasRenderedMathPair(node ast.Node, source []byte) bool 
 
 	labelSource := append([]byte(nil), source...)
 	maskSourceRanges(labelSource, katexProtectedSourceRanges(source, node))
-	renderedDollars := destinationDollars + titleDollars + strings.Count(normalizeMarkdownDestination(string(node.Text(labelSource))), "$")
-	_ = ast.Walk(node, func(child ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering || child == node {
-			return ast.WalkContinue, nil
+	rendered := referenceRenderedMathText(node, source, labelSource)
+	for _, line := range strings.Split(rendered, "\n") {
+		if strings.Count(line, "$") > 1 {
+			return true
 		}
-		switch child := child.(type) {
-		case *ast.Image:
-			renderedDollars += strings.Count(normalizeMarkdownDestination(string(child.Destination)), "$")
-			renderedDollars += strings.Count(normalizeMarkdownDestination(string(child.Title)), "$")
+	}
+	return false
+}
+
+func referenceRenderedMathText(node ast.Node, source, labelSource []byte) string {
+	var rendered strings.Builder
+	var writeNode func(ast.Node)
+	writeChildren := func(parent ast.Node) {
+		for child := parent.FirstChild(); child != nil; child = child.NextSibling() {
+			writeNode(child)
+		}
+	}
+	writeNode = func(current ast.Node) {
+		switch current := current.(type) {
 		case *ast.Link:
-			renderedDollars += strings.Count(normalizeMarkdownDestination(string(child.Destination)), "$")
-			renderedDollars += strings.Count(normalizeMarkdownDestination(string(child.Title)), "$")
+			rendered.WriteString(normalizeMarkdownDestination(string(current.Destination)))
+			rendered.WriteString(normalizeMarkdownDestination(string(current.Title)))
+			writeChildren(current)
+		case *ast.Image:
+			rendered.WriteString(normalizeMarkdownDestination(string(current.Destination)))
+			writeChildren(current)
+			rendered.WriteString(normalizeMarkdownDestination(string(current.Title)))
 		case *ast.AutoLink:
-			renderedDollars += strings.Count(string(child.Label(source)), "$")
+			label := string(current.Label(source))
+			rendered.WriteString(label)
+			rendered.WriteString(label)
+		case *ast.CodeSpan:
+			// processKaTeX protects code contents before matching math.
+		case *ast.Text:
+			rendered.WriteString(normalizeMarkdownDestination(string(current.Segment.Value(labelSource))))
+			if current.SoftLineBreak() || current.HardLineBreak() {
+				rendered.WriteByte('\n')
+			}
+		case *ast.String:
+			rendered.WriteString(normalizeMarkdownDestination(string(current.Value)))
+		case *ast.RawHTML:
+			rendered.WriteString(string(current.Text(labelSource)))
+		default:
+			writeChildren(current)
 		}
-		return ast.WalkContinue, nil
-	})
-	return renderedDollars > 1
+	}
+	writeNode(node)
+	return rendered.String()
 }
 
 func inlineDestinationSourceRange(source []byte, labelEnd, referenceEnd int) (sourceRange, bool) {

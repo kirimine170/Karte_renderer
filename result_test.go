@@ -542,6 +542,54 @@ func TestRenderResultExcludesOuterLinkWhenHrefAndNestedImageContainDollars(t *te
 	}
 }
 
+func TestRenderResultKeepsDollarReferencesSeparatedByRenderedNewlines(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "foo$bar.md"), "page")
+	writeFile(t, filepath.Join(root, "foo$bar.png"), "plot")
+
+	tests := []struct {
+		name       string
+		markdown   string
+		wantLinks  []RenderLink
+		wantAssets []RenderAsset
+	}{
+		{
+			name:      "link label",
+			markdown:  "[docs\n$](foo$bar.md)",
+			wantLinks: []RenderLink{{Kind: LinkInternal, Target: "foo$bar.md", Path: "foo$bar.md"}},
+		},
+		{
+			name:      "link title",
+			markdown:  "[docs](foo$bar.md \"title\n$\")",
+			wantLinks: []RenderLink{{Kind: LinkInternal, Target: "foo$bar.md", Path: "foo$bar.md"}},
+		},
+		{
+			name:       "image label",
+			markdown:   "![plot\n$](foo$bar.png)",
+			wantAssets: []RenderAsset{{Reference: "foo$bar.png", Path: "foo$bar.png", Status: AssetAvailable}},
+		},
+		{
+			name:       "image title",
+			markdown:   "![plot](foo$bar.png \"title\n$\")",
+			wantAssets: []RenderAsset{{Reference: "foo$bar.png", Path: "foo$bar.png", Status: AssetAvailable}},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := RenderStringResult(root, test.markdown)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(result.Metadata.Links, test.wantLinks) {
+				t.Fatalf("links = %#v, want %#v", result.Metadata.Links, test.wantLinks)
+			}
+			if !reflect.DeepEqual(result.Metadata.Assets, test.wantAssets) {
+				t.Fatalf("assets = %#v, want %#v", result.Metadata.Assets, test.wantAssets)
+			}
+		})
+	}
+}
+
 func TestRenderResultNormalizesMathDelimiters(t *testing.T) {
 	result, err := RenderStringResult(t.TempDir(), `&#36;![numeric](numeric.png)$
 

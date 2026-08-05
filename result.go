@@ -579,11 +579,64 @@ func referenceOverlapsMath(node ast.Node, source []byte, sequence int, mathRange
 	if _, ok := node.(*ast.AutoLink); ok {
 		return sourceRangeOverlapsAny(referenceRange, mathRanges)
 	}
-	if reference := referenceLink(node); reference != nil && reference.Type == ast.ReferenceLinkShortcut {
+	reference := referenceLink(node)
+	if reference == nil {
+		labelEnd := referenceLabelEnd(node, source, referenceRange)
+		destinationRange, ok := inlineDestinationSourceRange(source, labelEnd, referenceRange.end)
+		return ok && sourceRangeOverlapsAny(destinationRange, mathRanges)
+	}
+	if reference.Type == ast.ReferenceLinkShortcut {
 		return false
 	}
 	suffixStart := referenceLabelEnd(node, source, referenceRange)
 	return suffixStart < referenceRange.end && sourceRangeOverlapsAny(sourceRange{start: suffixStart, end: referenceRange.end}, mathRanges)
+}
+
+func inlineDestinationSourceRange(source []byte, labelEnd, referenceEnd int) (sourceRange, bool) {
+	start := labelEnd
+	if start >= referenceEnd || start >= len(source) || source[start] != '(' {
+		return sourceRange{}, false
+	}
+	start++
+	for start < referenceEnd && start < len(source) && (source[start] == ' ' || source[start] == '\t' || source[start] == '\n' || source[start] == '\r') {
+		start++
+	}
+	if start >= referenceEnd || start >= len(source) || source[start] == ')' {
+		return sourceRange{}, false
+	}
+	if source[start] == '<' {
+		start++
+		for i := start; i < referenceEnd && i < len(source); i++ {
+			if source[i] == '\\' && i+1 < len(source) {
+				i++
+				continue
+			}
+			if source[i] == '>' {
+				return sourceRange{start: start, end: i}, i > start
+			}
+		}
+		return sourceRange{}, false
+	}
+
+	opened := 0
+	for i := start; i < referenceEnd && i < len(source); i++ {
+		if source[i] == '\\' && i+1 < len(source) {
+			i++
+			continue
+		}
+		switch source[i] {
+		case '(':
+			opened++
+		case ')':
+			if opened == 0 {
+				return sourceRange{start: start, end: i}, i > start
+			}
+			opened--
+		case ' ', '\t', '\n', '\r':
+			return sourceRange{start: start, end: i}, i > start
+		}
+	}
+	return sourceRange{}, false
 }
 
 func referenceLink(node ast.Node) *ast.ReferenceLink {

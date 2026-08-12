@@ -24,6 +24,12 @@ The split is intentional:
 - Normal document PDF output prefers a Chromium-family browser for modern CSS
   support. Existing `wkhtmltopdf` integrations remain supported.
 
+On Windows, automatic PDF engine discovery checks `PATH` first and then the
+standard per-machine and per-user installation directories for Microsoft Edge,
+Google Chrome, Brave, and Chromium. A separately installed `wkhtmltopdf` is not
+required when one of those browsers is available. Set `KARTE_PDF_BINARY` only
+when an explicit browser or compatibility binary must be used.
+
 Marp's normal PPTX output prioritizes visual fidelity and stores rendered
 slides as images. `--pptx-editable` is experimental, needs LibreOffice as well
 as a browser, does not preserve every complex style, and does not support

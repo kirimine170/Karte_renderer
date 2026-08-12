@@ -127,8 +127,14 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path build/windows-pdf-smoke | Out-Null
-          go run ./cmd/karte-renderer --pdf-engine chromium testdata/p0/acceptance.md build/windows-pdf-smoke/acceptance.pdf
-          $pdf = Get-Item -LiteralPath build/windows-pdf-smoke/acceptance.pdf
+          @'
+          # Windows PDF auto-discovery smoke
+
+          This document is intentionally self-contained so the smoke test
+          validates browser discovery and PDF generation without Poppler.
+          '@ | Set-Content -LiteralPath build/windows-pdf-smoke/smoke.md -Encoding utf8
+          go run ./cmd/karte-renderer --pdf-engine chromium build/windows-pdf-smoke/smoke.md build/windows-pdf-smoke/smoke.pdf
+          $pdf = Get-Item -LiteralPath build/windows-pdf-smoke/smoke.pdf
           if ($pdf.Length -lt 1024) {
             Write-Error "Generated PDF is unexpectedly small: $($pdf.Length) bytes"
           }

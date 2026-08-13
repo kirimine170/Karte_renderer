@@ -77,6 +77,19 @@ Markdown does not require Node.js or a browser.
 Math-enabled HTML remains standalone: the renderer embeds KaTeX and its fonts
 directly into the generated document, so previews and PDFs work offline.
 
+## Releases
+
+Go consumers should use a tagged release rather than a pseudo-version:
+
+```sh
+go get github.com/kirimine170/KarteRenderer@v0.1.0
+```
+
+Tags use Semantic Versioning with a leading `v`. GitHub Releases also provide
+prebuilt `karte-renderer` command archives and SHA-256 checksums. The complete
+versioning, artifact, changelog, release, and rollback procedure is in
+[`RELEASE.md`](RELEASE.md).
+
 ## CLI
 
 ```sh

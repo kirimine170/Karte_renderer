@@ -162,20 +162,23 @@ func checkHTMLAssets(htmlFile string) PreflightCheck {
 		return failedCheck("html-assets", err.Error())
 	}
 	text := string(document)
+	// Attribute-like JavaScript strings are not document asset references. Keep
+	// the script tags so an actual script src attribute is still validated.
+	assetText := regexp.MustCompile(`(?is)(<script\b[^>]*>).*?(</script\s*>)`).ReplaceAllString(text, `${1}${2}`)
 	base := (&url.URL{Scheme: "file", Path: filepath.Dir(htmlFile) + string(os.PathSeparator)}).String()
 	for _, pattern := range []string{`(?is)<base\b[^>]*\bhref\s*=\s*"([^"]+)"`, `(?is)<base\b[^>]*\bhref\s*=\s*'([^']+)'`} {
-		if match := regexp.MustCompile(pattern).FindStringSubmatch(text); match != nil {
+		if match := regexp.MustCompile(pattern).FindStringSubmatch(assetText); match != nil {
 			base = html.UnescapeString(match[1])
 			break
 		}
 	}
 	references := make([]string, 0)
 	for _, pattern := range []string{`(?is)\bsrc\s*=\s*"([^"]+)"`, `(?is)\bsrc\s*=\s*'([^']+)'`, `(?is)<link\b[^>]*\bhref\s*=\s*"([^"]+)"`, `(?is)<link\b[^>]*\bhref\s*=\s*'([^']+)'`} {
-		for _, match := range regexp.MustCompile(pattern).FindAllStringSubmatch(text, -1) {
+		for _, match := range regexp.MustCompile(pattern).FindAllStringSubmatch(assetText, -1) {
 			references = append(references, html.UnescapeString(match[1]))
 		}
 	}
-	for _, style := range regexp.MustCompile(`(?is)<style\b[^>]*>(.*?)</style>`).FindAllStringSubmatch(text, -1) {
+	for _, style := range regexp.MustCompile(`(?is)<style\b[^>]*>(.*?)</style>`).FindAllStringSubmatch(assetText, -1) {
 		for _, match := range regexp.MustCompile(`url\(\s*["']?([^"')]+)`).FindAllStringSubmatch(style[1], -1) {
 			references = append(references, html.UnescapeString(strings.TrimSpace(match[1])))
 		}

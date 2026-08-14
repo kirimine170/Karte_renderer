@@ -1,0 +1,16 @@
+schemaVersion: 1
+name: asset-resolver-fixture
+version: 1.0.0
+
+markdown:
+  layout: markdown/layout.html
+  styles:
+    - markdown/base.css
+
+marp:
+  defaultTheme: karte-assets
+  themes:
+    - marp/karte.css
+
+assets:
+  directory: assets

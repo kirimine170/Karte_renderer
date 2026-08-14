@@ -1,0 +1,11 @@
+/* @theme karte-assets */
+
+@font-face {
+  font-family: "Report Sans";
+  src: local("Report Sans"), url("../assets/fonts/Report Sans.woff2") format("woff2");
+}
+
+section {
+  font-family: "Report Sans", sans-serif;
+  background-image: url("../assets/images/slide.svg");
+}

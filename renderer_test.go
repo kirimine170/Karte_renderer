@@ -11,13 +11,13 @@ import (
 	"testing"
 )
 
-func TestDefaultCSSDefinesA4PrintPageWithoutBodyMargin(t *testing.T) {
+func TestDefaultCSSDefinesZeroMarginA4PrintPage(t *testing.T) {
 	rendered, _, err := RenderString(t.TempDir(), "# Print")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	pageRule := regexp.MustCompile(`(?s)@page\s*\{[^}]*size:\s*A4 portrait;[^}]*margin:\s*12mm 14mm;[^}]*background:\s*linear-gradient\(`)
+	pageRule := regexp.MustCompile(`(?s)@page\s*\{[^}]*size:\s*A4 portrait;[^}]*margin:\s*0;[^}]*background:\s*linear-gradient\(`)
 	if !pageRule.MatchString(rendered) {
 		t.Fatal("default stylesheet does not define the expected A4 page box")
 	}

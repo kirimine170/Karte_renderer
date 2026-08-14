@@ -58,6 +58,26 @@ func TestResolvePrintoutOptionsUsesFieldByFieldPrecedence(t *testing.T) {
 	}
 }
 
+func TestPrintoutStylePreservesExplicitZeroAndBookMargins(t *testing.T) {
+	resolved, err := resolvePrintoutOptions(PrintoutOptions{
+		Size:          "B5",
+		Margin:        "0",
+		InsideMargin:  "20mm",
+		OutsideMargin: "14mm",
+	}, PDFOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	style := buildPrintoutStyle(resolved)
+	for _, want := range []string{
+		`@page{size:B5;margin:0;}`,
+		`@page:left{margin-left:14mm;margin-right:20mm;}`,
+		`@page:right{margin-right:14mm;margin-left:20mm;}`,
+	} {
+		assertContains(t, style, want)
+	}
+}
+
 func TestConvertB5BookPrintoutFixture(t *testing.T) {
 	root, err := filepath.Abs(".")
 	if err != nil {
@@ -82,6 +102,27 @@ func TestConvertB5BookPrintoutFixture(t *testing.T) {
 	} {
 		assertContains(t, html, want)
 	}
+}
+
+func TestConvertPrintoutSizeOnlyKeepsZeroPhysicalPageMargin(t *testing.T) {
+	root := t.TempDir()
+	input := filepath.Join(root, "full-bleed.md")
+	output := filepath.Join(root, "full-bleed.html")
+	writeFile(t, input, "---\nprintout: B5\n---\n# Full bleed")
+	if _, err := ConvertFile(context.Background(), input, output, ConvertOptions{Root: root}); err != nil {
+		t.Fatal(err)
+	}
+	rendered, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := strings.ReplaceAll(string(rendered), "\r\n", "\n")
+	defaultPage := strings.Index(html, "@page {\n  size: A4 portrait;\n  margin: 0;")
+	lateOverride := strings.Index(html, `id="karte-printout-options"`)
+	if defaultPage < 0 || lateOverride < 0 || defaultPage > lateOverride {
+		t.Fatalf("zero-margin default must precede the size-only printout override:\n%s", html)
+	}
+	assertContains(t, html[lateOverride:], `@page{size:B5;}`)
 }
 
 func TestPrintoutRunningTextCannotTerminateStyleElement(t *testing.T) {

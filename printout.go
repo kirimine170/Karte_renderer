@@ -13,8 +13,10 @@ import (
 // PrintoutOptions describes finite paged-media settings. It is used both by
 // YAML front matter and by the resolved PDF configuration.
 type PrintoutOptions struct {
-	Size          string `yaml:"size"`
-	Orientation   string `yaml:"orientation"`
+	Size        string `yaml:"size"`
+	Orientation string `yaml:"orientation"`
+	// Margin configures the physical @page margin. Content-safe spacing belongs
+	// in the selected layout or theme so backgrounds can extend to the page edge.
 	Margin        string `yaml:"margin"`
 	InsideMargin  string `yaml:"insideMargin"`
 	OutsideMargin string `yaml:"outsideMargin"`
@@ -171,6 +173,9 @@ func buildPrintoutStyle(options PrintoutOptions) string {
 		fmt.Fprintf(&page, "size:%s;", size)
 	}
 	if options.Margin != "" {
+		// Only explicit page margins belong in this late override. The built-in
+		// stylesheet defaults the physical page margin to zero, while custom
+		// layouts and themes remain free to define their own content safe area.
 		fmt.Fprintf(&page, "margin:%s;", options.Margin)
 	}
 	if options.Header != "" {

@@ -52,9 +52,10 @@ presenter notes. See the
   `themes/default/layout.html`, with a printable standalone fallback layout.
 - A built-in Purple Color Palette stylesheet for normal Markdown documents,
   with explicit custom CSS and no-CSS modes.
-- A4 portrait defaults plus validated A3/A4/A5/B4/B5/Letter/Legal overrides,
-  mirrored book margins, running header/footer, page-number folios, and
-  right-page chapter starts for normal-document PDF output.
+- A4 portrait, zero physical page-margin defaults plus validated
+  A3/A4/A5/B4/B5/Letter/Legal overrides, mirrored book margins, running
+  header/footer, page-number folios, and right-page chapter starts for
+  normal-document PDF output.
 - Local asset resolution when HTML is written to a different output directory.
 - Context-aware Go APIs, atomic HTML writes, actionable external-tool errors,
   and a dependency doctor.
@@ -220,6 +221,15 @@ printout:
 only their matching front-matter fields. The renderer emits the settings as a
 late paged-media override, so screen styling is unchanged; mirrored `:left`
 and `:right` rules put the inside margin on the binding edge.
+
+The built-in stylesheet uses `@page { margin: 0; }`, so selecting only a page
+size keeps the physical page full-bleed capable. `margin`, `insideMargin`, and
+`outsideMargin` are explicit physical page-box controls and continue to
+override that default. Content safe areas are a layout/theme responsibility:
+add padding or an equivalent inner content wrapper there when text must stay
+away from trim and binding edges without preventing backgrounds or decoration
+from reaching the page edge. Custom stylesheets remain responsible for their
+own `@page` defaults.
 
 `expected_pages` automatically enables PDF preflight. Preflight runs after the
 PDF is written, keeps the PDF on failure, and writes `<output>.preflight.json`

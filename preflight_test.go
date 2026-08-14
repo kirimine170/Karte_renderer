@@ -58,6 +58,57 @@ func TestHTMLPreflightDetectsMissingAssetsAndRawTeX(t *testing.T) {
 	}
 }
 
+func TestHTMLAssetPreflightIgnoresAttributeLikeJavaScriptStrings(t *testing.T) {
+	root := t.TempDir()
+	htmlFile := filepath.Join(root, "book.html")
+	writeFile(t, htmlFile, `<!doctype html>
+<html>
+<head>
+  <base href="`+fileURL(root)+`/">
+</head>
+<body>
+  <script>
+    var markup = "src='" + value + "'";
+    var link = "<link href='missing-from-script.css'>";
+    var style = "<style>.preview { background: url(missing-from-script.png) }</style>";
+  </script>
+</body>
+</html>`)
+	assets := checkHTMLAssets(htmlFile)
+	if !assets.Passed {
+		t.Fatalf("JavaScript string was treated as an asset reference: %+v", assets)
+	}
+}
+
+func TestHTMLAssetPreflightStillChecksRealAssetReferences(t *testing.T) {
+	root := t.TempDir()
+	htmlFile := filepath.Join(root, "book.html")
+	writeFile(t, htmlFile, `<!doctype html>
+<html>
+<head>
+  <base href="`+fileURL(root)+`/">
+  <link rel="stylesheet" href="missing-real.css">
+  <style>.preview { background: url(missing-real.png) }</style>
+</head>
+<body>
+  <img src="missing-real.svg">
+  <script src="missing-real.js">var markup = "src='missing-from-script.svg'";</script>
+</body>
+</html>`)
+	assets := checkHTMLAssets(htmlFile)
+	if assets.Passed {
+		t.Fatalf("real asset references were not checked: %+v", assets)
+	}
+	for _, reference := range []string{"missing-real.css", "missing-real.js", "missing-real.png", "missing-real.svg"} {
+		if !strings.Contains(assets.Detail, reference) {
+			t.Fatalf("real asset reference %q was not reported: %+v", reference, assets)
+		}
+	}
+	if strings.Contains(assets.Detail, "missing-from-script.svg") {
+		t.Fatalf("JavaScript string was treated as an asset reference: %+v", assets)
+	}
+}
+
 func TestPreflightReportPathCannotOverwriteProtectedFiles(t *testing.T) {
 	root := t.TempDir()
 	input := filepath.Join(root, "book.md")

@@ -98,3 +98,51 @@ jobs:
           path: build/p0-preflight/
           if-no-files-found: warn
           retention-days: 7
+
+  windows-pdf-smoke:
+    name: Windows PDF auto-discovery smoke
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Confirm system Edge is not required on PATH
+        shell: pwsh
+        run: |
+          if (Get-Command msedge.exe -ErrorAction SilentlyContinue) {
+            Write-Error 'The smoke test requires Edge discovery outside PATH'
+          }
+          $edgeCandidates = @(
+            "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
+            "${env:ProgramFiles}\Microsoft\Edge\Application\msedge.exe",
+            "${env:LOCALAPPDATA}\Microsoft\Edge\Application\msedge.exe"
+          )
+          if (-not ($edgeCandidates | Where-Object { Test-Path -LiteralPath $_ })) {
+            Write-Error 'Microsoft Edge is not installed in a standard Windows location'
+          }
+      - name: Render PDF using automatic browser discovery
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path build/windows-pdf-smoke | Out-Null
+          @'
+          # Windows PDF auto-discovery smoke
+
+          This document is intentionally self-contained so the smoke test
+          validates browser discovery and PDF generation without Poppler.
+          '@ | Set-Content -LiteralPath build/windows-pdf-smoke/smoke.md -Encoding utf8
+          go run ./cmd/karte-renderer --pdf-engine chromium build/windows-pdf-smoke/smoke.md build/windows-pdf-smoke/smoke.pdf
+          $pdf = Get-Item -LiteralPath build/windows-pdf-smoke/smoke.pdf
+          if ($pdf.Length -lt 1024) {
+            Write-Error "Generated PDF is unexpectedly small: $($pdf.Length) bytes"
+          }
+      - name: Upload Windows PDF evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-pdf-smoke
+          path: build/windows-pdf-smoke/
+          if-no-files-found: warn
+          retention-days: 7

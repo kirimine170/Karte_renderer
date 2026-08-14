@@ -584,24 +584,62 @@ func findMarpBinary(start string) string {
 }
 
 func findChromium() string {
-	for _, name := range []string{"chromium", "chromium-browser", "google-chrome", "google-chrome-stable", "microsoft-edge", "brave-browser"} {
-		if p, err := exec.LookPath(name); err == nil {
+	return findChromiumForOS(runtime.GOOS, os.Getenv, exec.LookPath, regularFileExists)
+}
+
+func findChromiumForOS(
+	goos string,
+	getenv func(string) string,
+	lookPath func(string) (string, error),
+	fileExists func(string) bool,
+) string {
+	names := []string{"chromium", "chromium-browser", "google-chrome", "google-chrome-stable", "microsoft-edge", "brave-browser"}
+	if goos == "windows" {
+		names = append([]string{"msedge.exe", "chrome.exe", "brave.exe", "chromium.exe"}, names...)
+	}
+	for _, name := range names {
+		if p, err := lookPath(name); err == nil {
 			return p
 		}
 	}
-	if runtime.GOOS == "darwin" {
-		for _, p := range []string{
+
+	var candidates []string
+	switch goos {
+	case "windows":
+		roots := []string{getenv("ProgramFiles(x86)"), getenv("ProgramFiles"), getenv("LOCALAPPDATA")}
+		relativePaths := []string{
+			filepath.Join("Microsoft", "Edge", "Application", "msedge.exe"),
+			filepath.Join("Google", "Chrome", "Application", "chrome.exe"),
+			filepath.Join("BraveSoftware", "Brave-Browser", "Application", "brave.exe"),
+			filepath.Join("Chromium", "Application", "chrome.exe"),
+		}
+		for _, root := range roots {
+			if root == "" {
+				continue
+			}
+			for _, relativePath := range relativePaths {
+				candidates = append(candidates, filepath.Join(root, relativePath))
+			}
+		}
+	case "darwin":
+		candidates = []string{
 			"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 			"/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
 			"/Applications/Chromium.app/Contents/MacOS/Chromium",
 			"/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
-		} {
-			if info, err := os.Stat(p); err == nil && !info.IsDir() {
-				return p
-			}
+		}
+	}
+	for _, candidate := range candidates {
+		if fileExists(candidate) {
+			return candidate
 		}
 	}
 	return ""
+}
+
+func regularFileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 func insertBaseURL(document, dir string) string {

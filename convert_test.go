@@ -2,6 +2,7 @@ package renderer
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -300,6 +301,72 @@ func TestConvertRejectsPPTXForPlainDocumentWithoutMarpCLI(t *testing.T) {
 	_, err := ConvertFile(context.Background(), input, filepath.Join(root, "page.docx"), ConvertOptions{Root: root})
 	if err == nil || !strings.Contains(err.Error(), "unsupported document output") {
 		t.Fatalf("expected unsupported extension error, got %v", err)
+	}
+}
+
+func TestFindChromiumForWindowsPrefersPath(t *testing.T) {
+	wanted := filepath.Join("path", "msedge.exe")
+	got := findChromiumForOS(
+		"windows",
+		func(string) string { return filepath.Join(`C:\`, "Program Files") },
+		func(name string) (string, error) {
+			if name == "msedge.exe" {
+				return wanted, nil
+			}
+			return "", errors.New("not found")
+		},
+		func(string) bool { return true },
+	)
+	if got != wanted {
+		t.Fatalf("findChromiumForOS() = %q, want PATH result %q", got, wanted)
+	}
+}
+
+func TestFindChromiumForWindowsUsesStandardInstallLocations(t *testing.T) {
+	programFilesX86 := filepath.Join(`C:\`, "Program Files (x86)")
+	programFiles := filepath.Join(`C:\`, "Program Files")
+	localAppData := filepath.Join(`C:\`, "Users", "karte", "AppData", "Local")
+	wanted := filepath.Join(programFilesX86, "Microsoft", "Edge", "Application", "msedge.exe")
+
+	got := findChromiumForOS(
+		"windows",
+		func(name string) string {
+			switch name {
+			case "ProgramFiles(x86)":
+				return programFilesX86
+			case "ProgramFiles":
+				return programFiles
+			case "LOCALAPPDATA":
+				return localAppData
+			default:
+				return ""
+			}
+		},
+		func(string) (string, error) { return "", errors.New("not found") },
+		func(path string) bool { return path == wanted },
+	)
+	if got != wanted {
+		t.Fatalf("findChromiumForOS() = %q, want installed Edge %q", got, wanted)
+	}
+}
+
+func TestFindChromiumForWindowsFallsBackToPerUserChrome(t *testing.T) {
+	localAppData := filepath.Join(`C:\`, "Users", "karte", "AppData", "Local")
+	wanted := filepath.Join(localAppData, "Google", "Chrome", "Application", "chrome.exe")
+
+	got := findChromiumForOS(
+		"windows",
+		func(name string) string {
+			if name == "LOCALAPPDATA" {
+				return localAppData
+			}
+			return ""
+		},
+		func(string) (string, error) { return "", errors.New("not found") },
+		func(path string) bool { return path == wanted },
+	)
+	if got != wanted {
+		t.Fatalf("findChromiumForOS() = %q, want per-user Chrome %q", got, wanted)
 	}
 }
 

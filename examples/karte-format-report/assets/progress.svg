@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 420" role="img" aria-labelledby="title desc">
+  <title id="title">月間進捗</title>
+  <desc id="desc">第1週から第4週までの計画値と実績値を比較する折れ線グラフ</desc>
+  <rect width="960" height="420" rx="24" fill="#f7f5fb"/>
+  <g font-family="Hiragino Sans, Yu Gothic UI, Yu Gothic, sans-serif">
+    <text x="60" y="52" fill="#172033" font-size="24" font-weight="700">主要マイルストーンの累積進捗</text>
+    <g stroke="#d9d4e5" stroke-width="2"><path d="M84 320H900"/><path d="M84 252H900"/><path d="M84 184H900"/><path d="M84 116H900"/></g>
+    <g fill="#59647a" font-size="16">
+      <text x="46" y="326">0</text><text x="32" y="258">25</text><text x="32" y="190">50</text><text x="32" y="122">75</text><text x="24" y="84">100%</text>
+      <text x="116" y="362">第1週</text><text x="340" y="362">第2週</text><text x="564" y="362">第3週</text><text x="788" y="362">第4週</text>
+    </g>
+    <polyline points="148,266 372,211 596,157 820,102" fill="none" stroke="#a9a1b8" stroke-width="7" stroke-dasharray="12 12" stroke-linecap="round" stroke-linejoin="round"/>
+    <polyline points="148,276 372,222 596,143 820,70" fill="none" stroke="#6f42c1" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+    <g fill="#6f42c1" stroke="#ffffff" stroke-width="5"><circle cx="148" cy="276" r="11"/><circle cx="372" cy="222" r="11"/><circle cx="596" cy="143" r="11"/><circle cx="820" cy="70" r="11"/></g>
+    <g font-size="16" font-weight="700">
+      <line x1="622" y1="38" x2="670" y2="38" stroke="#6f42c1" stroke-width="8" stroke-linecap="round"/><text x="682" y="44" fill="#172033">実績</text>
+      <line x1="760" y1="38" x2="808" y2="38" stroke="#a9a1b8" stroke-width="7" stroke-dasharray="9 9" stroke-linecap="round"/><text x="820" y="44" fill="#172033">計画</text>
+    </g>
+    <rect x="788" y="48" width="72" height="34" rx="17" fill="#147d64"/><text x="824" y="71" fill="#ffffff" font-size="16" font-weight="700" text-anchor="middle">92%</text>
+  </g>
+</svg>

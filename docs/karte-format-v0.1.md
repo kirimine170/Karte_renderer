@@ -162,3 +162,15 @@ version; changing an existing field's meaning requires a new schema version.
 The machine-readable companion is
 [`karte-format-v0.1.schema.json`](karte-format-v0.1.schema.json). A minimal
 authoring template is in `examples/karte-format-v0.1`.
+
+## Reference fixture
+
+`examples/karte-format-report` is the representative activity-report fixture.
+It contains a normal Markdown report, a five-slide Marp version of the same
+content, one deterministic SVG used by both outputs, matching document and
+slide design tokens, and `expected.json` for stable resolution and render
+expectations. CI stages the package with its relative paths intact and uses the
+public conversion API to produce and inspect document HTML/PDF plus Marp
+HTML/PDF/PPTX outputs. Unlike the minimal authoring template, this package is
+intended to catch visual-contract regressions as the conversion integration
+evolves.

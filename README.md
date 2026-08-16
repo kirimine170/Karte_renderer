@@ -317,6 +317,11 @@ See [the v0.1 specification](docs/karte-format-v0.1.md), its
 `ParseFormatManifest` and `LoadFormatManifest` for strict manifest validation;
 package application through conversion options is tracked separately.
 
+The [activity report fixture](examples/karte-format-report) is a complete
+package with normal Markdown and Marp inputs, a shared progress graphic,
+matching document/slide tokens, and machine-readable output expectations. It
+exercises `ResolveFormatPackageAssets` as a realistic distribution example.
+
 ```md
 @import(type="md" path="partials/intro.md")
 @import(type="csv" path="data/results.csv" select="Name,Score")

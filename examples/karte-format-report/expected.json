@@ -1,0 +1,37 @@
+{
+  "progressPercent": 92,
+  "document": {
+    "title": "2026年7月 活動実績レポート",
+    "headings": ["月間進捗", "デリバリー状況", "次月の重点"],
+    "asset": "assets/progress.svg",
+    "pages": 3
+  },
+  "marp": {
+    "title": "2026年7月 活動実績レポート",
+    "theme": "karte-activity-report",
+    "slides": 5,
+    "asset": "assets/progress.svg"
+  },
+  "resolution": {
+    "distribution": [
+      "karte-format.yaml",
+      "markdown/layout.html",
+      "markdown/base.css",
+      "markdown/print.css",
+      "marp/karte-activity-report.css",
+      "assets/progress.svg"
+    ],
+    "references": [
+      {
+        "source": "markdown/base.css",
+        "reference": "../assets/progress.svg",
+        "packagePath": "assets/progress.svg"
+      },
+      {
+        "source": "marp/karte-activity-report.css",
+        "reference": "../assets/progress.svg",
+        "packagePath": "assets/progress.svg"
+      }
+    ]
+  }
+}

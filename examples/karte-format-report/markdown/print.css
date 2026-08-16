@@ -1,0 +1,15 @@
+@page {
+  size: A4 portrait;
+  margin: 16mm 16mm 18mm;
+}
+
+@media print {
+  :root { background: #ffffff; font-size: 10.5pt; }
+  .report-shell { width: auto; margin: 0; padding: 0; border-radius: 0; box-shadow: none; }
+  .report-hero { min-height: 224mm; margin: -16mm -16mm 0; padding: 48mm 22mm; break-after: page; }
+  .report-hero h1 { font-size: 34pt; }
+  h2 { margin-top: 1.8rem; }
+  .kpi-card, .callout, figure, table, .next-actions { break-inside: avoid; }
+  .kpi-value { font-size: 20pt; }
+  a { color: inherit; text-decoration: none; }
+}

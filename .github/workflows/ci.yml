@@ -63,6 +63,11 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
       - name: Install Poppler
         run: |
           sudo apt-get update
@@ -90,12 +95,20 @@ jobs:
             build/p0-preflight/book.pdf
           grep -q '"passed": true' build/p0-preflight/report.json
           test "$(pdfinfo build/p0-preflight/book.pdf | awk '/^Pages:/ { print $2 }')" = "48"
+      - name: Render the report fixture as document and Marp outputs
+        shell: bash
+        env:
+          KARTE_REPORT_CHROMIUM: ${{ steps.chrome.outputs.path }}
+          KARTE_REPORT_KEEP_OUTPUTS: "1"
+        run: scripts/test-report-format.sh
       - name: Upload preflight evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: p0-pdf-preflight
-          path: build/p0-preflight/
+          path: |
+            build/p0-preflight/
+            build/report-format/
           if-no-files-found: warn
           retention-days: 7
 

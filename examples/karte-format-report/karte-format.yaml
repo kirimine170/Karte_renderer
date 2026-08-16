@@ -1,0 +1,17 @@
+schemaVersion: 1
+name: karte-activity-report
+version: 0.1.0
+
+markdown:
+  layout: markdown/layout.html
+  styles:
+    - markdown/base.css
+    - markdown/print.css
+
+marp:
+  defaultTheme: karte-activity-report
+  themes:
+    - marp/karte-activity-report.css
+
+assets:
+  directory: assets

@@ -1,0 +1,102 @@
+/* @theme karte-activity-report */
+
+@import "default";
+
+:root {
+  --karte-ink: #172033;
+  --karte-muted: #59647a;
+  --karte-accent: #6f42c1;
+  --karte-accent-strong: #4b278f;
+  --karte-accent-soft: #eee8fb;
+  --karte-positive: #147d64;
+  --karte-warning: #a85d00;
+  --karte-surface: #f7f5fb;
+  --karte-border: #d9d4e5;
+  --karte-font-sans: "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", system-ui, sans-serif;
+}
+
+section {
+  padding: 64px 72px;
+  color: var(--karte-ink);
+  background: #ffffff;
+  font-family: var(--karte-font-sans);
+  font-size: 28px;
+  line-height: 1.55;
+}
+
+section::after { right: 32px; bottom: 22px; color: var(--karte-muted); font-size: 16px; }
+h1, h2, h3 { color: var(--karte-ink); letter-spacing: -0.025em; }
+h1 { margin-bottom: 0.65em; font-size: 52px; }
+
+h1::after {
+  display: block;
+  width: 96px;
+  height: 8px;
+  margin-top: 18px;
+  border-radius: 999px;
+  background: var(--karte-accent);
+  content: "";
+}
+
+h2 { color: var(--karte-accent-strong); }
+p, li { color: var(--karte-muted); }
+strong { color: var(--karte-ink); }
+
+section.lead {
+  color: #ffffff;
+  background-color: var(--karte-accent-strong);
+  background-image: linear-gradient(135deg, rgb(75 39 143 / 96%), rgb(111 66 193 / 92%)), url("../assets/progress.svg");
+  background-position: center, 135% 65%;
+  background-repeat: no-repeat;
+  background-size: auto, 68%;
+}
+
+section.lead h1 { max-width: 900px; color: #ffffff; font-size: 70px; }
+section.lead h1::after { background: rgb(255 255 255 / 60%); }
+section.lead p { color: rgb(255 255 255 / 84%); }
+
+section.lead::before {
+  position: absolute;
+  right: -150px;
+  bottom: -280px;
+  width: 440px;
+  height: 440px;
+  border: 66px solid rgb(255 255 255 / 12%);
+  border-radius: 50%;
+  content: "";
+}
+
+section.lead::after { color: rgb(255 255 255 / 70%); }
+
+section table {
+  display: table;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--karte-border);
+  border-collapse: separate;
+  border-radius: 12px;
+  border-spacing: 0;
+  font-size: 22px;
+  table-layout: fixed;
+}
+
+section th, section td { padding: 14px 18px; border-bottom: 1px solid var(--karte-border); text-align: left; }
+section th { color: var(--karte-accent-strong); background: var(--karte-accent-soft); }
+section tbody tr:nth-child(even) { background: var(--karte-surface); }
+section tr:last-child td { border-bottom: 0; }
+
+blockquote {
+  margin: 1.5em 0;
+  padding: 0.7em 1em;
+  border-left: 8px solid var(--karte-accent);
+  color: var(--karte-accent-strong);
+  background: var(--karte-accent-soft);
+}
+
+blockquote p { color: inherit; }
+img { display: block; max-height: 440px; margin: 0 auto; }
+section.metrics table { table-layout: fixed; font-size: 25px; text-align: center; }
+section.metrics th, section.metrics td { text-align: center; }
+section.metrics tbody td { padding: 26px 16px; color: var(--karte-accent-strong); font-size: 38px; font-weight: 800; }
+section.compact { font-size: 24px; }
+section.compact table { font-size: 20px; }

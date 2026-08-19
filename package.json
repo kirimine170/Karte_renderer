@@ -7,7 +7,8 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@marp-team/marp-cli": "4.4.1"
+    "@marp-team/marp-cli": "4.4.1",
+    "@marp-team/marp-core": "4.3.1"
   },
   "scripts": {
     "marp": "marp",

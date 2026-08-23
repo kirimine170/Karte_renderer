@@ -139,17 +139,18 @@ func TestPreviewContractDocumentedJSONSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	documentText := strings.ReplaceAll(string(document), "\r\n", "\n")
 
 	const schemaStart = "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\""
-	start := strings.Index(string(document), schemaStart)
+	start := strings.Index(documentText, schemaStart)
 	if start < 0 {
 		t.Fatal("documented PreviewResult JSON Schema was not found")
 	}
-	end := strings.Index(string(document[start:]), "\n```")
+	end := strings.Index(documentText[start:], "\n```")
 	if end < 0 {
 		t.Fatal("documented PreviewResult JSON Schema is not a closed code block")
 	}
-	schemaJSON := document[start : start+end]
+	schemaJSON := []byte(documentText[start : start+end])
 	if !json.Valid(schemaJSON) {
 		t.Fatalf("documented PreviewResult JSON Schema is not valid JSON:\n%s", schemaJSON)
 	}

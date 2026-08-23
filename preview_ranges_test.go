@@ -24,7 +24,8 @@ func TestDetectMarpSectionBoundariesFixture(t *testing.T) {
 	if strings.Contains(bodies[0], "marp: true") {
 		t.Fatalf("front matter leaked into first slide: %q", bodies[0])
 	}
-	if !strings.Contains(bodies[0], "```markdown\n---\n```") || !strings.Contains(bodies[0], "<!--\n---\n-->") {
+	firstBody := strings.ReplaceAll(bodies[0], "\r\n", "\n")
+	if !strings.Contains(firstBody, "```markdown\n---\n```") || !strings.Contains(firstBody, "<!--\n---\n-->") {
 		t.Fatalf("fence or comment delimiter split a slide: %q", bodies[0])
 	}
 	if boundaries[0].ExplicitID != "intro.slide" {

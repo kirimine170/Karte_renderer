@@ -11,3 +11,5 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 - Documented the versioning, release, artifact, changelog, and rollback policy.
 - Added tag-driven release automation for CLI archives and checksums.
+- Added a versioned Markdown/Marp Preview contract with official Marp Core
+  rendering, reusable process lifecycle, page IDs, and source ranges.

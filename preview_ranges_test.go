@@ -158,7 +158,7 @@ func TestBuildMarkdownPreviewPages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if mode != PreviewPageContinuous || len(pages) != 1 || pages[0].Source.EndUTF16 != 10 {
+	if mode != PreviewPageContinuous || pages != nil {
 		t.Fatalf("continuous metadata = %q, %#v", mode, pages)
 	}
 	for _, source := range []string{"before\n@pagebreak\nafter", `<div class="karte-print-page">x</div>`} {
@@ -168,7 +168,7 @@ func TestBuildMarkdownPreviewPages(t *testing.T) {
 		}
 	}
 	mode, pages, err = BuildMarkdownPreviewPages("notes.md", "```md\n@pagebreak\n```")
-	if err != nil || mode != PreviewPageContinuous || len(pages) != 1 {
+	if err != nil || mode != PreviewPageContinuous || pages != nil {
 		t.Fatalf("fenced marker metadata = %q, %#v, %v", mode, pages, err)
 	}
 }

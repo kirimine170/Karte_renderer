@@ -61,6 +61,9 @@ presenter notes. See the
   and a dependency doctor.
 - An additive `RenderResult` API for front matter, render dependencies, links,
   assets, and non-fatal diagnostics.
+- An additive, context-aware `Previewer` API backed by a reusable official
+  Marp Core process, with document kind, page mode, stable per-render page IDs,
+  UTF-8/UTF-16 source ranges, cancellation, and root-scoped preview assets.
 
 ## Requirements
 
@@ -78,8 +81,9 @@ go build -o bin/karte-renderer ./cmd/karte-renderer
 bin/karte-renderer doctor
 ```
 
-`package-lock.json` pins the Marp toolchain. HTML conversion for normal
-Markdown does not require Node.js or a browser.
+`package-lock.json` pins both Marp CLI and the directly used Marp Core version.
+Normal Markdown preview does not require Node.js. Marp preview requires Node.js
+but does not start Chromium or another browser.
 
 Math-enabled HTML remains standalone: the renderer embeds KaTeX and its fonts
 directly into the generated document, so previews and PDFs work offline.
@@ -165,6 +169,29 @@ fmt.Println(result.Metadata.Diagnostics)
 
 The versioning, path, ordering, and diagnostic rules are documented in
 [`docs/render-result-metadata.md`](docs/render-result-metadata.md).
+
+Create a reusable preview lifecycle when Karte needs normal Markdown or Marp
+HTML without file export:
+
+```go
+previewer, err := renderer.NewPreviewer()
+if err != nil {
+    return err
+}
+defer previewer.Close()
+
+result, err := previewer.Render(ctx, projectRoot, source, renderer.PreviewOptions{
+    Path: "slides/talk.marp.md",
+})
+fmt.Println(result.Kind, result.PageMode, result.Pages)
+```
+
+The Node process starts lazily only for Marp and is reused by warm renders.
+Raw HTML is disabled unless `TrustedHTML` is explicitly enabled. Preview
+themes and local assets must remain inside the project root, and the returned
+document blocks scripts and network resource loading. The complete schema,
+coordinate system, page-ID guarantees, import behavior, and lifecycle rules
+are documented in [`docs/preview-contract.md`](docs/preview-contract.md).
 
 Convert a file based on its metadata and output extension:
 

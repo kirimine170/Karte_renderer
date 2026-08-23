@@ -86,16 +86,13 @@ func BuildPreviewSourceRange(path, source string, startByte, endByte int) (Previ
 
 // BuildMarkdownPreviewPages reports only pagination known before browser
 // layout. Explicit pagination markers select runtime-pages without inventing
-// physical ranges; otherwise the document is one continuous logical page.
+// physical ranges; otherwise the document is continuous and has no physical
+// page list yet.
 func BuildMarkdownPreviewPages(path, source string) (PreviewPageMode, []PreviewPage, error) {
 	if hasRuntimePaginationMarker(source) {
 		return PreviewPageRuntime, nil, nil
 	}
-	pages, err := buildPreviewPages("markdown", path, source, []PreviewSectionBoundary{{EndByte: len(source)}})
-	if err != nil {
-		return "", nil, err
-	}
-	return PreviewPageContinuous, pages, nil
+	return PreviewPageContinuous, nil, nil
 }
 
 func buildPreviewPages(prefix, path, source string, boundaries []PreviewSectionBoundary) ([]PreviewPage, error) {

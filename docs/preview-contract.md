@@ -21,7 +21,7 @@ result, err := previewer.Render(ctx, root, source, renderer.PreviewOptions{
 公開 API の基本形は次のとおりである．
 
 ```go
-func NewPreviewer(options PreviewerOptions) (*Previewer, error)
+func NewPreviewer(options ...PreviewerOptions) (*Previewer, error)
 func (p *Previewer) Render(
     ctx context.Context,
     root string,
@@ -30,6 +30,8 @@ func (p *Previewer) Render(
 ) (PreviewResult, error)
 func (p *Previewer) Close() error
 ```
+
+`NewPreviewer` の options は省略可能であり，指定する場合は 1 個までとする．
 
 `Previewer` の lifecycle guarantee は次のとおりである．
 

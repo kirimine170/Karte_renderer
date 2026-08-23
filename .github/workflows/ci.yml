@@ -42,16 +42,24 @@ jobs:
         run: go vet ./...
 
   node-test:
-    name: Node fixture tests
+    name: Node and preview integration tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - run: npm test
+      - name: Run official Marp Core preview integration
+        env:
+          KARTE_PREVIEW_INTEGRATION: "1"
+        run: go test -count=1 -run 'TestPreviewer|TestMarpPreview' ./...
 
   p0-pdf-preflight:
     name: P0 real PDF preflight

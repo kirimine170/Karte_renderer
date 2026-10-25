@@ -259,6 +259,24 @@ exit 2
 	}
 }
 
+func TestChromiumPDFArgsUsePlatformFileURL(t *testing.T) {
+	for _, tc := range []struct{ name, goos, input, want string }{
+		{"Windows drive and Unicode", "windows", `D:\Karte User\日本語\page #1.html`, "file:///D:/Karte%20User/%E6%97%A5%E6%9C%AC%E8%AA%9E/page%20%231.html"},
+		{"Windows UNC", "windows", `\\server\share\Karte User\page.html`, "file://server/share/Karte%20User/page.html"},
+		{"POSIX literal backslash", "linux", `/tmp/a\b/page.html`, "file:///tmp/a%5Cb/page.html"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			args := chromiumPDFArgsForOS(tc.input, "output.pdf", "profile", PDFOptions{AllowLocalFiles: true, ExtraArgs: []string{"--disable-background-networking"}}, tc.goos)
+			if got := args[len(args)-1]; got != tc.want {
+				t.Fatalf("Chromium input = %q, want %q", got, tc.want)
+			}
+			if !strings.Contains(strings.Join(args, "\n"), "--allow-file-access-from-files\n--disable-background-networking\n") {
+				t.Fatalf("local-file or caller options were lost: %v", args)
+			}
+		})
+	}
+}
+
 func TestExportHTMLPDFStopsChromiumAfterCompletedTrailer(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell helper is Unix-only")

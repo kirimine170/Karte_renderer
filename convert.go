@@ -399,20 +399,7 @@ func ExportHTMLPDF(ctx context.Context, htmlFile, outputPDF string, opts PDFOpti
 			return fmt.Errorf("create Chromium profile: %w", err)
 		}
 		cleanup = func() { _ = os.RemoveAll(profile) }
-		args = []string{
-			"--headless",
-			"--disable-gpu",
-			"--disable-extensions",
-			"--no-pdf-header-footer",
-			"--print-to-pdf-no-header",
-			"--user-data-dir=" + profile,
-			"--print-to-pdf=" + outputAbs,
-		}
-		if opts.AllowLocalFiles {
-			args = append(args, "--allow-file-access-from-files")
-		}
-		args = append(args, opts.ExtraArgs...)
-		args = append(args, (&url.URL{Scheme: "file", Path: htmlAbs}).String())
+		args = chromiumPDFArgsForOS(htmlAbs, outputAbs, profile, opts, runtime.GOOS)
 	} else {
 		cleanup = func() {}
 		if opts.AllowLocalFiles {
@@ -436,6 +423,24 @@ func ExportHTMLPDF(ctx context.Context, htmlFile, outputPDF string, opts PDFOpti
 		return fmt.Errorf("PDF engine did not create output %s: %w", outputAbs, err)
 	}
 	return nil
+}
+
+func chromiumPDFArgsForOS(htmlInput, output, profile string, opts PDFOptions, goos string) []string {
+	args := []string{
+		"--headless",
+		"--disable-gpu",
+		"--disable-extensions",
+		"--no-pdf-header-footer",
+		"--print-to-pdf-no-header",
+		"--user-data-dir=" + profile,
+		"--print-to-pdf=" + output,
+	}
+	if opts.AllowLocalFiles {
+		args = append(args, "--allow-file-access-from-files")
+	}
+	args = append(args, opts.ExtraArgs...)
+	// A Windows drive path is a URL path，not a host or an escaped backslash path．
+	return append(args, fileURLForOS(htmlInput, goos))
 }
 
 // runChromiumPDF accepts a completed PDF even when a Chromium release keeps

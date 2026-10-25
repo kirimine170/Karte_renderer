@@ -47,6 +47,9 @@ func main() {
 }
 
 func run(args []string) error {
+	if len(args) > 0 && args[0] == "instagram" {
+		return runInstagram(args[1:])
+	}
 	if len(args) > 0 && args[0] == "doctor" {
 		return doctor()
 	}
@@ -88,6 +91,7 @@ func run(args []string) error {
 	fs.Usage = func() {
 		fmt.Fprintln(fs.Output(), "Usage: karte-renderer [convert] [options] INPUT.md OUTPUT.{html,pdf,pptx}")
 		fmt.Fprintln(fs.Output(), "       karte-renderer doctor")
+		fmt.Fprintln(fs.Output(), "       karte-renderer instagram {preview,image} [options] DRAFT.json OUTPUT")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {

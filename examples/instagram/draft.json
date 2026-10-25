@@ -1,0 +1,18 @@
+{
+  "schema": "karte.instagram-draft",
+  "version": 1,
+  "mode": "app",
+  "username": "karte_studio",
+  "location": "Kyoto, Japan",
+  "caption": "研究室の小さな記録を，ひとつずつ．画面の幅を変えると，同じキャプションでも折り返しの位置が変わります．\n\n#研究記録 #KarteStudio",
+  "aspect": "0.8",
+  "simulation": {
+    "devices": ["compact", "standard", "android"],
+    "textScale": 100,
+    "collapsedLines": 2,
+    "gridRatio": 0.75
+  },
+  "images": [
+    { "filename": "source.webp", "crop": { "x": 0.5, "y": 0.5, "zoom": 1 } }
+  ]
+}

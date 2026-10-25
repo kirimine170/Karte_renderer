@@ -99,6 +99,8 @@ versioning, artifact, changelog, release, and rollback procedure is in
 
 ## CLI
 
+Instagram画像投稿のJPEG出力・端末別HTMLプレビューは，独立した`instagram`サブコマンドから使えます．Go APIとJSON形式は[Instagramレンダリング](docs/instagram.md)を参照してください．JPEG書き出しはNode.js・ブラウザ・Wailsに依存しません．
+
 ```sh
 # Normal Markdown
 bin/karte-renderer document.md output/document.html

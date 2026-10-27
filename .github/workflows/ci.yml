@@ -7,6 +7,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   go-test:
     name: Go tests (${{ matrix.os }})
@@ -14,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-15, macos-15-intel, windows-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -23,6 +27,11 @@ jobs:
           cache: true
       - name: Run Go tests
         run: go test -count=1 ./...
+      - name: Run platform-specific vet checks
+        run: go vet ./...
+      - name: Check process lifecycle races on Unix
+        if: runner.os != 'Windows'
+        run: go test -race -count=1 -run '^TestNative' .
 
   quality:
     name: Formatting and vet
@@ -112,8 +121,56 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  macos-render-smoke:
+    name: macOS rendering (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Render document, Marp, and Instagram outputs with native Chrome
+        shell: bash
+        run: |
+          set -euo pipefail
+          browser='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+          test -x "$browser"
+          output='build/macos-render-smoke/日本語 & 100%'
+          mkdir -p "$output"
+          go build -o build/macos-render-smoke/karte-renderer ./cmd/karte-renderer
+          renderer=build/macos-render-smoke/karte-renderer
+          "$renderer" --pdf-engine chromium --pdf-binary "$browser" examples/document.md "$output/document #1.pdf"
+          for extension in html pdf pptx; do
+            "$renderer" --browser-path "$browser" examples/slides.md "$output/slides #1.$extension"
+            test -s "$output/slides #1.$extension"
+          done
+          "$renderer" instagram image examples/instagram/draft.json "$output/instagram #1.jpg"
+          "$renderer" instagram preview examples/instagram/draft.json "$output/instagram #1.html"
+          test -s "$output/document #1.pdf"
+          test -s "$output/instagram #1.jpg"
+          test -s "$output/instagram #1.html"
+      - name: Upload macOS rendering evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-render-smoke-${{ matrix.os }}
+          path: build/macos-render-smoke/
+          if-no-files-found: warn
+          retention-days: 7
+
   windows-pdf-smoke:
-    name: Windows PDF auto-discovery smoke
+    name: Windows PDF and Marp smoke
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
@@ -122,6 +179,11 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
       - name: Confirm system Edge is not required on PATH
         shell: pwsh
         run: |
@@ -150,6 +212,24 @@ jobs:
           $pdf = Get-Item -LiteralPath build/windows-pdf-smoke/smoke.pdf
           if ($pdf.Length -lt 1024) {
             Write-Error "Generated PDF is unexpectedly small: $($pdf.Length) bytes"
+          }
+      - name: Render Marp using the Windows npm launcher
+        shell: pwsh
+        run: |
+          $outputDir = 'build/windows-pdf-smoke/日本語 & 100%'
+          New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
+          $browser = @(
+            "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
+            "${env:ProgramFiles}\Microsoft\Edge\Application\msedge.exe",
+            "${env:LOCALAPPDATA}\Microsoft\Edge\Application\msedge.exe"
+          ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+          foreach ($extension in @('html', 'pdf', 'pptx')) {
+            $output = Join-Path $outputDir "slides #1.$extension"
+            go run ./cmd/karte-renderer --browser-path "$browser" examples/slides.md "$output"
+            if ($LASTEXITCODE -ne 0) { throw "Marp $extension conversion failed" }
+            if ((Get-Item -LiteralPath $output).Length -lt 1024) {
+              throw "Marp $extension output is unexpectedly small"
+            }
           }
       - name: Upload Windows PDF evidence
         if: always()

@@ -165,7 +165,7 @@ func checkHTMLAssets(htmlFile string) PreflightCheck {
 	// Attribute-like JavaScript strings are not document asset references. Keep
 	// the script tags so an actual script src attribute is still validated.
 	assetText := regexp.MustCompile(`(?is)(<script\b[^>]*>).*?(</script\s*>)`).ReplaceAllString(text, `${1}${2}`)
-	base := (&url.URL{Scheme: "file", Path: filepath.Dir(htmlFile) + string(os.PathSeparator)}).String()
+	base := fileURL(filepath.Dir(htmlFile) + string(os.PathSeparator))
 	for _, pattern := range []string{`(?is)<base\b[^>]*\bhref\s*=\s*"([^"]+)"`, `(?is)<base\b[^>]*\bhref\s*=\s*'([^']+)'`} {
 		if match := regexp.MustCompile(pattern).FindStringSubmatch(assetText); match != nil {
 			base = html.UnescapeString(match[1])
@@ -317,7 +317,7 @@ func checkHTMLOverflow(ctx context.Context, htmlFile string, options PreflightOp
 		"--headless", "--disable-gpu", "--disable-extensions", "--allow-file-access-from-files",
 		"--run-all-compositor-stages-before-draw", "--virtual-time-budget=1500", "--dump-dom",
 		"--user-data-dir=" + profile, fmt.Sprintf("--window-size=%d,%d", width, height),
-		(&url.URL{Scheme: "file", Path: tmpName}).String(),
+		fileURL(tmpName),
 	}
 	probeCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()

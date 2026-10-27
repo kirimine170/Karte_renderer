@@ -283,6 +283,9 @@ func prepareMarpInput(root, input, source string, hardwrap bool) (string, func()
 
 // ExportMarp converts a Markdown slide deck with the official Marp CLI.
 func ExportMarp(ctx context.Context, input, output string, opts MarpOptions) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	binary := opts.Binary
 	if binary == "" {
 		binary = os.Getenv("MARP_BINARY")
@@ -324,9 +327,15 @@ func ExportMarp(ctx context.Context, input, output string, opts MarpOptions) err
 		args = append(args, "--pptx-editable")
 	}
 	args = append(args, opts.ExtraArgs...)
-	cmd := exec.CommandContext(ctx, binary, args...)
+	cmd, err := marpCommand(ctx, binary, args...)
+	if err != nil {
+		return err
+	}
+	isolateProcessGroup(cmd)
+	cmd.WaitDelay = 2 * time.Second
 	cmd.Dir = filepath.Dir(inputAbs)
 	if out, err := cmd.CombinedOutput(); err != nil {
+		killProcessTree(cmd)
 		return fmt.Errorf("Marp conversion failed: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	if _, err := os.Stat(outputAbs); err != nil {
@@ -470,6 +479,9 @@ func runChromiumPDF(ctx context.Context, binary string, args []string, outputPDF
 		case err := <-done:
 			if err != nil {
 				killProcessTree(cmd)
+				if ctx.Err() != nil {
+					err = ctx.Err()
+				}
 				return fmt.Errorf("chromium PDF conversion failed: %w: %s", err, strings.TrimSpace(output.String()))
 			}
 			return nil
@@ -574,7 +586,11 @@ func findMarpBinary(start string) string {
 	}
 	start, _ = filepath.Abs(start)
 	for dir := start; dir != ""; dir = filepath.Dir(dir) {
-		for _, name := range []string{"marp", "marp.cmd"} {
+		names := []string{"marp"}
+		if runtime.GOOS == "windows" {
+			names = []string{"marp.exe", "marp.cmd"}
+		}
+		for _, name := range names {
 			candidate := filepath.Join(dir, "node_modules", ".bin", name)
 			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
 				return candidate

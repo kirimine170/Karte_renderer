@@ -81,6 +81,12 @@ bin/karte-renderer doctor
 `package-lock.json` pins the Marp toolchain. HTML conversion for normal
 Markdown does not require Node.js or a browser.
 
+On Windows, npm's local `node_modules/.bin/marp.cmd` and global `marp.cmd`
+launchers are resolved to the official `marp-cli.js` and run with Node.js.
+`MARP_BINARY` can also point directly to that JavaScript entry point or a
+native Marp executable. Input paths and arguments containing spaces, Japanese
+text, `&`, or `%` are passed directly without shell expansion.
+
 Math-enabled HTML remains standalone: the renderer embeds KaTeX and its fonts
 directly into the generated document, so previews and PDFs work offline.
 

@@ -58,6 +58,19 @@ func TestHTMLPreflightDetectsMissingAssetsAndRawTeX(t *testing.T) {
 	}
 }
 
+func TestHTMLAssetPreflightWithoutBaseHandlesUnicodeAndSpaces(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "日本語 #1 100%")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(root, "image #1.svg"), "<svg></svg>")
+	htmlFile := filepath.Join(root, "book.html")
+	writeFile(t, htmlFile, `<!doctype html><img src="image%20%231.svg">`)
+	if result := checkHTMLAssets(htmlFile); !result.Passed || !strings.Contains(result.Detail, "validated 1 unique local assets") {
+		t.Fatalf("existing relative image was not validated: %+v", result)
+	}
+}
+
 func TestHTMLAssetPreflightIgnoresAttributeLikeJavaScriptStrings(t *testing.T) {
 	root := t.TempDir()
 	htmlFile := filepath.Join(root, "book.html")
